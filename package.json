@@ -1,0 +1,38 @@
+{
+  "name": "slideforge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Template-controlled deck compiler for branded Slidev/PPT pipelines.",
+  "packageManager": "pnpm@10.3.0",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "start": "pnpm dev",
+    "validate": "tsx packages/compiler/src/cli.ts validate examples/basic.deck.yaml --schema schemas/deck.schema.json",
+    "validate:trial": "tsx packages/compiler/src/cli.ts validate examples/trial-lecture.deck.yaml --schema schemas/deck.schema.json",
+    "build:deck": "tsx packages/compiler/src/cli.ts build examples/basic.deck.yaml --out .slideforge/build",
+    "build:trial": "tsx packages/compiler/src/cli.ts build examples/trial-lecture.deck.yaml --out .slideforge/build",
+    "dev:slidev": "pnpm build:deck && slidev .slideforge/build/slides.md",
+    "dev:trial": "pnpm build:trial && slidev .slideforge/build/slides.md",
+    "dev:desktop": "pnpm --filter @slideforge/desktop dev:electron",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "clean": "rm -rf dist packages/*/dist apps/*/dist .slideforge/build/*"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@slidev/cli": "^52.15.0",
+    "@slidev/theme-seriph": "^0.25.0",
+    "@types/js-yaml": "^4.0.9",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron"
+    ]
+  }
+}

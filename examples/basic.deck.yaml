@@ -1,0 +1,42 @@
+meta:
+  title: "Slideforge 产品雏形"
+  language: "zh-CN"
+  theme: "corporate"
+  template: "teaching"
+slides:
+  - id: "cover"
+    type: "cover"
+    title: "Slideforge"
+    content:
+      subtitle: "模板受控的幻灯片编译系统"
+    animation:
+      preset: "none"
+  - id: "problem"
+    type: "bullet_summary"
+    title: "普通 AI PPT 的问题"
+    content:
+      points:
+        - "输出不稳定，难以复现"
+        - "模板和品牌规范容易失控"
+        - "审查、批量生产和版本管理困难"
+    animation:
+      preset: "step_reveal"
+  - id: "pipeline"
+    type: "process"
+    title: "Slideforge 编译链路"
+    content:
+      steps:
+        - "用户意图 / 文案素材"
+        - "Deck Spec"
+        - "模板校验"
+        - "Slidev Renderer"
+        - "HTML / PDF / PPTX"
+    animation:
+      preset: "step_reveal"
+  - id: "closing"
+    type: "closing"
+    title: "目标"
+    content:
+      statement: "让幻灯片生产变得可审查、可复现、可批量生成。"
+    animation:
+      preset: "highlight_key_points"

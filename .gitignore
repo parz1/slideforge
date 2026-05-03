@@ -1,0 +1,17 @@
+node_modules/
+
+# Build outputs
+dist/
+**/dist/
+**/target/
+apps/desktop/src-tauri/
+.slideforge/*
+!.slideforge/build/
+.slideforge/build/*
+!.slideforge/build/.gitkeep
+
+# Local runtime state
+*.log
+.DS_Store
+.env
+.env.*

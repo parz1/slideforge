@@ -1,0 +1,28 @@
+meta:
+  title: "Asset-backed Teaching Deck"
+  language: "zh-CN"
+  theme: "teaching"
+  template: "teaching"
+assets:
+  - id: "graph_diagram"
+    path: "assets/graph-diagram.png"
+    kind: "image"
+    description: "示例图结构"
+slides:
+  - id: "cover"
+    type: "cover"
+    title: "图搜索试讲"
+    content:
+      subtitle: "用结构化模板承载素材"
+    visual:
+      assetId: "graph_diagram"
+      alt: "图搜索示意"
+      role: "primary"
+  - id: "practice"
+    type: "checklist"
+    title: "课堂练习"
+    content:
+      items:
+        - "指出图中的起点"
+        - "写出 DFS 访问顺序"
+        - "解释为什么需要 visited"
