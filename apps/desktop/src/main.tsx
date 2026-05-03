@@ -303,13 +303,14 @@ function DeckWorkbench() {
   );
 
   useEffect(() => {
-    if (previewWindow.current && !previewWindow.current.closed && selectedSlide) {
+    if (!task || !selectedSlide) {
+      return;
+    }
+    if (previewWindow.current && !previewWindow.current.closed) {
       writePreviewWindow(previewWindow.current, selectedSlide);
     }
-    if (selectedSlide) {
-      emitActiveSlideToDesktopPreview(selectedSlide);
-    }
-  }, [selectedSlide]);
+    emitActiveSlideToDesktopPreview(selectedSlide);
+  }, [selectedSlide, task]);
 
   useEffect(() => {
     void refreshVault();
@@ -522,6 +523,31 @@ function DeckWorkbench() {
     setSelectedSlideId(nextDeck.slides[0]?.id ?? "");
   }
 
+  function returnToWelcome() {
+    setTask(null);
+    setDeck(initialDeck);
+    setSelectedSlideId(initialDeck.slides[0]?.id ?? "");
+    setTaskError("");
+    setTaskStatus("No project opened.");
+    void refreshVault();
+  }
+
+  if (!task) {
+    return (
+      <WelcomeScreen
+        createProject={createProject}
+        isBusy={isBusy}
+        newProjectName={newProjectName}
+        openTaskFolder={openTaskFolder}
+        openVaultProject={openVaultProject}
+        setNewProjectName={setNewProjectName}
+        status={taskError || taskStatus}
+        statusTone={taskError ? "warn" : "normal"}
+        vaultProjects={vaultProjects}
+      />
+    );
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -563,28 +589,17 @@ function DeckWorkbench() {
         <div className="task-summary">
           <div>
             <p className="task-kicker">Project</p>
-            <h2>{task?.name ?? "No project"}</h2>
-            <p>{task?.path ?? "Create a project or open a folder containing brief.md, outline.md, deck.yaml and assets/."}</p>
+            <h2>{task.name}</h2>
+            <p>{task.path}</p>
           </div>
           <div className="task-actions">
-            <Input
-              className="project-name-input"
-              placeholder="New project name"
-              value={newProjectName}
-              onChange={(event) => setNewProjectName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  void createProject();
-                }
-              }}
-            />
-            <Button type="button" variant="secondary" onClick={createProject} disabled={isBusy}>
-              <FolderOpenIcon />
-              Create Project
-            </Button>
             <Button type="button" variant="outline" onClick={openTaskFolder} disabled={isBusy}>
               <FolderOpenIcon />
-              Open Project
+              Switch Project
+            </Button>
+            <Button type="button" variant="outline" onClick={returnToWelcome} disabled={isBusy}>
+              <FolderOpenIcon />
+              Projects
             </Button>
             <Button type="button" variant="outline" onClick={reloadTaskFolder} disabled={isBusy || !task}>
               <RefreshCwIcon />
@@ -601,35 +616,33 @@ function DeckWorkbench() {
           </div>
         </div>
         <div className="task-grid">
-          <TaskMetric icon={<FileTextIcon />} label="Brief" value={task ? `${wordCount(task.brief)} chars` : "-"} />
-          <TaskMetric icon={<FileTextIcon />} label="Outline" value={task ? `${wordCount(task.outline)} chars` : "-"} />
-          <TaskMetric icon={<ImageIcon />} label="Assets" value={task ? `${task.assets.length} files` : "-"} />
+          <TaskMetric icon={<FileTextIcon />} label="Brief" value={`${wordCount(task.brief)} chars`} />
+          <TaskMetric icon={<FileTextIcon />} label="Outline" value={`${wordCount(task.outline)} chars`} />
+          <TaskMetric icon={<ImageIcon />} label="Assets" value={`${task.assets.length} files`} />
           <TaskMetric
             icon={<BadgeCheckIcon />}
             label="OpenAI"
-            value={task?.envStatus.message ?? "Not checked"}
-            tone={task?.envStatus.hasKey && task.envStatus.hasModel ? "ok" : "warn"}
+            value={task.envStatus.message}
+            tone={task.envStatus.hasKey && task.envStatus.hasModel ? "ok" : "warn"}
           />
         </div>
-        {task ? (
-          <div className="task-assets">
-            <span>Referenced assets</span>
-            {task.referencedAssets.length === 0 ? (
-              <Badge variant="outline">none</Badge>
-            ) : (
-              task.referencedAssets.map((asset) => (
-                <Badge key={asset.assetId} variant="outline">
-                  {asset.path}
-                </Badge>
-              ))
-            )}
-            {task.missingAssetRefs.map((assetRef) => (
-              <Badge key={assetRef} variant="destructive">
-                missing {assetRef}
+        <div className="task-assets">
+          <span>Referenced assets</span>
+          {task.referencedAssets.length === 0 ? (
+            <Badge variant="outline">none</Badge>
+          ) : (
+            task.referencedAssets.map((asset) => (
+              <Badge key={asset.assetId} variant="outline">
+                {asset.path}
               </Badge>
-            ))}
-          </div>
-        ) : null}
+            ))
+          )}
+          {task.missingAssetRefs.map((assetRef) => (
+            <Badge key={assetRef} variant="destructive">
+              missing {assetRef}
+            </Badge>
+          ))}
+        </div>
         <p className={taskError ? "task-status warn" : "task-status"}>{taskError || taskStatus}</p>
       </Card>
 
@@ -673,35 +686,14 @@ function DeckWorkbench() {
         <Card className="outline-pane">
           <CardHeader className="pane-heading">
             <div>
-              <CardTitle>Vault</CardTitle>
+              <CardTitle>Outline</CardTitle>
               <CardDescription>
-                {vaultProjects.length} project{vaultProjects.length === 1 ? "" : "s"} · {deck.slides.length} slides
+                {deck.slides.length} slide{deck.slides.length === 1 ? "" : "s"}
               </CardDescription>
             </div>
           </CardHeader>
           <CardContent className="pane-content">
             <ScrollArea className="slide-scroll">
-              <section className="vault-list" aria-label="Projects">
-                {vaultProjects.length === 0 ? (
-                  <p>No projects yet.</p>
-                ) : (
-                  vaultProjects.map((project) => (
-                    <button
-                      className={task?.path === project.path ? "active" : ""}
-                      disabled={!project.exists || isBusy}
-                      key={project.path}
-                      onClick={() => openVaultProject(project)}
-                      type="button"
-                    >
-                      <strong>{project.name}</strong>
-                      <span>{project.exists ? project.path : "Missing folder"}</span>
-                    </button>
-                  ))
-                )}
-              </section>
-              <div className="outline-divider">
-                <span>Outline</span>
-              </div>
               <nav className="slide-list" aria-label="Slides">
                 {deck.slides.map((slide, index) => (
                   <button
@@ -870,6 +862,123 @@ function DeckWorkbench() {
             </TabsContent>
           </Tabs>
         </Card>
+      </section>
+    </main>
+  );
+}
+
+function WelcomeScreen({
+  createProject,
+  isBusy,
+  newProjectName,
+  openTaskFolder,
+  openVaultProject,
+  setNewProjectName,
+  status,
+  statusTone,
+  vaultProjects,
+}: {
+  createProject: () => Promise<void>;
+  isBusy: boolean;
+  newProjectName: string;
+  openTaskFolder: () => Promise<void>;
+  openVaultProject: (project: VaultProject) => Promise<void>;
+  setNewProjectName: (value: string) => void;
+  status: string;
+  statusTone: "normal" | "warn";
+  vaultProjects: VaultProject[];
+}) {
+  const availableProjects = vaultProjects.filter((project) => project.exists);
+  const missingProjects = vaultProjects.filter((project) => !project.exists);
+
+  return (
+    <main className="welcome-shell">
+      <section className="welcome-sidebar" aria-label="Project start">
+        <div>
+          <p className="eyebrow">Slideforge</p>
+          <h1>Start a teaching deck project</h1>
+          <p className="welcome-copy">
+            Create a project folder for brief.md, outline.md, deck.yaml, assets and output.
+          </p>
+        </div>
+
+        <div className="welcome-actions">
+          <div className="field">
+            <FieldLabel>New project name</FieldLabel>
+            <Input
+              autoFocus
+              placeholder="Graph DFS lesson"
+              value={newProjectName}
+              onChange={(event) => setNewProjectName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void createProject();
+                }
+              }}
+            />
+          </div>
+          <Button type="button" onClick={createProject} disabled={isBusy}>
+            <FolderOpenIcon />
+            Create Project
+          </Button>
+          <Button type="button" variant="outline" onClick={openTaskFolder} disabled={isBusy}>
+            <FolderOpenIcon />
+            Open Project
+          </Button>
+        </div>
+
+        <p className={statusTone === "warn" ? "welcome-status warn" : "welcome-status"}>
+          {status}
+        </p>
+      </section>
+
+      <section className="welcome-main" aria-label="Recent projects">
+        <div className="welcome-main-heading">
+          <div>
+            <h2>Recent Projects</h2>
+            <p>{vaultProjects.length} project{vaultProjects.length === 1 ? "" : "s"} in this workspace</p>
+          </div>
+          <Button type="button" variant="secondary" onClick={openTaskFolder} disabled={isBusy}>
+            <FolderOpenIcon />
+            Browse
+          </Button>
+        </div>
+
+        <ScrollArea className="welcome-recents">
+          {availableProjects.length === 0 ? (
+            <section className="welcome-empty">
+              <h3>No projects yet</h3>
+              <p>Create a project folder or open an existing Slideforge task folder.</p>
+            </section>
+          ) : (
+            <div className="welcome-project-list">
+              {availableProjects.map((project) => (
+                <button
+                  disabled={isBusy}
+                  key={project.path}
+                  onClick={() => void openVaultProject(project)}
+                  type="button"
+                >
+                  <strong>{project.name}</strong>
+                  <span>{project.path}</span>
+                  <small>Last opened {project.lastOpenedAt}</small>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {missingProjects.length > 0 ? (
+            <section className="welcome-missing">
+              <h3>Missing folders</h3>
+              {missingProjects.map((project) => (
+                <div key={project.path}>
+                  <strong>{project.name}</strong>
+                  <span>{project.path}</span>
+                </div>
+              ))}
+            </section>
+          ) : null}
+        </ScrollArea>
       </section>
     </main>
   );
