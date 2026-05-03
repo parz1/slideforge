@@ -39,6 +39,9 @@ import "./styles.css";
 declare global {
   interface SlideforgeBridge {
     invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>;
+    showWorkbenchWindow(): Promise<void>;
+    showWelcomeWindow(): Promise<void>;
+    windowAction(action: "close" | "minimize"): Promise<void>;
     openActivePreview(slide: DeckSlide): Promise<boolean>;
     updateActivePreview(slide: DeckSlide): Promise<void>;
     onActiveSlideUpdated(callback: (slide: DeckSlide) => void): () => void;
@@ -314,6 +317,7 @@ function DeckWorkbench() {
 
   useEffect(() => {
     void refreshVault();
+    void hydrateInitialTask();
   }, []);
 
   async function openActivePreview() {
@@ -397,9 +401,9 @@ function DeckWorkbench() {
         setTaskStatus("Create project cancelled.");
         return;
       }
-      applyTaskPayload(payload);
+      const shouldOpenWorkbenchWindow = !task;
+      await openTaskPayload(payload, shouldOpenWorkbenchWindow);
       setNewProjectName("");
-      await refreshVault();
       setTaskStatus(`Created ${payload.name}.`);
     });
   }
@@ -411,19 +415,18 @@ function DeckWorkbench() {
         setTaskStatus("Open project cancelled.");
         return;
       }
-      applyTaskPayload(payload);
-      await refreshVault();
+      await openTaskPayload(payload, !task);
       setTaskStatus(`Opened ${payload.name}.`);
     });
   }
 
   async function openVaultProject(project: VaultProject) {
     await runTaskAction("Open vault project", async () => {
+      const shouldOpenWorkbenchWindow = !task;
       const payload = await invokeDesktop<TaskFolderPayload>("load_task_folder", {
         path: project.path,
       });
-      applyTaskPayload(payload);
-      await refreshVault();
+      await openTaskPayload(payload, shouldOpenWorkbenchWindow);
       setTaskStatus(`Opened ${payload.name}.`);
     });
   }
@@ -523,13 +526,35 @@ function DeckWorkbench() {
     setSelectedSlideId(nextDeck.slides[0]?.id ?? "");
   }
 
+  async function openTaskPayload(payload: TaskFolderPayload, showWorkbenchWindow: boolean) {
+    applyTaskPayload(payload);
+    await refreshVault();
+    if (showWorkbenchWindow) {
+      await window.slideforge?.showWorkbenchWindow();
+    }
+  }
+
+  async function hydrateInitialTask() {
+    if (!isDesktopRuntime()) {
+      return;
+    }
+    try {
+      const payload = await invokeDesktop<TaskFolderPayload | null>("get_initial_task");
+      if (payload) {
+        applyTaskPayload(payload);
+      }
+    } catch (error) {
+      setTaskError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   function returnToWelcome() {
     setTask(null);
     setDeck(initialDeck);
     setSelectedSlideId(initialDeck.slides[0]?.id ?? "");
     setTaskError("");
     setTaskStatus("No project opened.");
-    void refreshVault();
+    void window.slideforge?.showWelcomeWindow();
   }
 
   if (!task) {
@@ -544,6 +569,7 @@ function DeckWorkbench() {
         status={taskError || taskStatus}
         statusTone={taskError ? "warn" : "normal"}
         vaultProjects={vaultProjects}
+        windowAction={(action) => window.slideforge?.windowAction(action)}
       />
     );
   }
@@ -877,6 +903,7 @@ function WelcomeScreen({
   status,
   statusTone,
   vaultProjects,
+  windowAction,
 }: {
   createProject: () => Promise<void>;
   isBusy: boolean;
@@ -887,12 +914,27 @@ function WelcomeScreen({
   status: string;
   statusTone: "normal" | "warn";
   vaultProjects: VaultProject[];
+  windowAction: (action: "close" | "minimize") => Promise<void> | undefined;
 }) {
   const availableProjects = vaultProjects.filter((project) => project.exists);
   const missingProjects = vaultProjects.filter((project) => !project.exists);
 
   return (
     <main className="welcome-shell">
+      <div className="welcome-window-controls" aria-label="Window controls">
+        <button
+          aria-label="Close"
+          className="close"
+          onClick={() => void windowAction("close")}
+          type="button"
+        />
+        <button
+          aria-label="Minimize"
+          className="minimize"
+          onClick={() => void windowAction("minimize")}
+          type="button"
+        />
+      </div>
       <section className="welcome-sidebar" aria-label="Project start">
         <div>
           <p className="eyebrow">Slideforge</p>

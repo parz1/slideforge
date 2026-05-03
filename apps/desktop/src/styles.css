@@ -74,6 +74,7 @@ body {
 }
 
 .welcome-shell {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(20rem, 0.72fr) minmax(0, 1.28fr);
   gap: 1rem;
@@ -81,6 +82,7 @@ body {
   height: 100vh;
   overflow: hidden;
   padding: 1rem;
+  -webkit-app-region: drag;
 }
 
 .welcome-sidebar,
@@ -91,11 +93,49 @@ body {
   background: #ffffff;
 }
 
+.welcome-window-controls {
+  position: absolute;
+  top: 1.08rem;
+  left: 1.1rem;
+  z-index: 2;
+  display: flex;
+  gap: 0.5rem;
+  -webkit-app-region: no-drag;
+}
+
+.welcome-window-controls button {
+  width: 0.78rem;
+  height: 0.78rem;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+}
+
+.welcome-window-controls .close {
+  background: #ff5f57;
+}
+
+.welcome-window-controls .minimize {
+  background: #ffbd2e;
+}
+
 .welcome-sidebar {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   gap: 1.35rem;
-  padding: 1.35rem;
+  padding: 2.4rem 1.35rem 1.35rem;
+  -webkit-app-region: drag;
+}
+
+.welcome-main,
+.welcome-actions,
+.welcome-actions *,
+.welcome-project-list,
+.welcome-project-list *,
+.welcome-main-heading button,
+.welcome-recents,
+.welcome-status {
+  -webkit-app-region: no-drag;
 }
 
 .welcome-sidebar h1 {

@@ -38,16 +38,18 @@ const SLIDE_TYPES = new Set([
 ]);
 
 let mainWindow = null;
+let mainWindowMode = "welcome";
 let activePreviewWindow = null;
 let lastActiveSlide = null;
+let activeTask = null;
 
 app.whenReady().then(() => {
   registerIpcHandlers();
-  createMainWindow();
+  createAppWindow(activeTask ? "workbench" : "welcome");
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow();
+      createAppWindow(activeTask ? "workbench" : "welcome");
     }
   });
 });
@@ -58,14 +60,19 @@ app.on("window-all-closed", () => {
   }
 });
 
-function createMainWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 940,
-    minWidth: 1120,
-    minHeight: 720,
+function createAppWindow(mode) {
+  const isWelcome = mode === "welcome";
+  const windowRef = new BrowserWindow({
+    width: isWelcome ? 980 : 1440,
+    height: isWelcome ? 640 : 940,
+    minWidth: isWelcome ? 820 : 1120,
+    minHeight: isWelcome ? 560 : 720,
     title: "Slideforge",
     backgroundColor: "#f7f8fa",
+    frame: !isWelcome,
+    resizable: true,
+    roundedCorners: true,
+    hasShadow: true,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -74,16 +81,21 @@ function createMainWindow() {
       sandbox: false,
     },
   });
+  mainWindow = windowRef;
+  mainWindowMode = mode;
 
-  mainWindow.once("ready-to-show", () => {
-    mainWindow?.show();
+  windowRef.once("ready-to-show", () => {
+    windowRef.show();
+    windowRef.focus();
   });
-  mainWindow.on("closed", () => {
-    mainWindow = null;
+  windowRef.on("closed", () => {
+    if (mainWindow === windowRef) {
+      mainWindow = null;
+    }
   });
 
-  void loadRenderer(mainWindow);
-  return mainWindow;
+  void loadRenderer(windowRef);
+  return windowRef;
 }
 
 async function loadRenderer(window, hash = "") {
@@ -105,6 +117,7 @@ async function loadRenderer(window, hash = "") {
 
 function registerIpcHandlers() {
   const handlers = {
+    get_initial_task: () => activeTask,
     list_vault_projects: listVaultProjects,
     create_project: ({ projectName }) => createProject(projectName),
     open_task_folder: openTaskFolder,
@@ -117,6 +130,29 @@ function registerIpcHandlers() {
   for (const [command, handler] of Object.entries(handlers)) {
     ipcMain.handle(`slideforge:${command}`, async (_event, args = {}) => handler(args));
   }
+
+  ipcMain.handle("window:show-workbench", async () => {
+    if (mainWindowMode !== "workbench") {
+      recreateAppWindow("workbench");
+    }
+  });
+
+  ipcMain.handle("window:show-welcome", async () => {
+    activeTask = null;
+    recreateAppWindow("welcome");
+  });
+
+  ipcMain.handle("window:action", (_event, action) => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    if (action === "minimize") {
+      mainWindow.minimize();
+    }
+    if (action === "close") {
+      mainWindow.close();
+    }
+  });
 
   ipcMain.handle("active-preview:open", async (_event, slide) => {
     lastActiveSlide = slide;
@@ -133,6 +169,14 @@ function registerIpcHandlers() {
   ipcMain.handle("active-preview:ready", () => {
     sendActiveSlideUpdate();
   });
+}
+
+function recreateAppWindow(mode) {
+  const previousWindow = mainWindow;
+  createAppWindow(mode);
+  if (previousWindow && !previousWindow.isDestroyed()) {
+    previousWindow.close();
+  }
 }
 
 async function openActivePreviewWindow() {
@@ -215,6 +259,7 @@ async function createProject(projectName) {
 
   const task = await loadTaskFolderInner(projectDir);
   await addProjectToVault(projectDir);
+  activeTask = task;
   return task;
 }
 
@@ -229,12 +274,14 @@ async function openTaskFolder() {
 
   const task = await loadTaskFolderInner(result.filePaths[0]);
   await addProjectToVault(result.filePaths[0]);
+  activeTask = task;
   return task;
 }
 
 async function loadTaskFolder(taskPath) {
   const task = await loadTaskFolderInner(taskPath);
   await addProjectToVault(taskPath);
+  activeTask = task;
   return task;
 }
 

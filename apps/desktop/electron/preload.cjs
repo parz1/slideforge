@@ -4,6 +4,15 @@ contextBridge.exposeInMainWorld("slideforge", {
   invoke(command, args = {}) {
     return ipcRenderer.invoke(`slideforge:${command}`, args);
   },
+  showWorkbenchWindow() {
+    return ipcRenderer.invoke("window:show-workbench");
+  },
+  showWelcomeWindow() {
+    return ipcRenderer.invoke("window:show-welcome");
+  },
+  windowAction(action) {
+    return ipcRenderer.invoke("window:action", action);
+  },
   openActivePreview(slide) {
     return ipcRenderer.invoke("active-preview:open", slide);
   },

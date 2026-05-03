@@ -3,7 +3,10 @@ import { createConnection, createServer } from "node:net";
 
 const processes = [];
 const rendererHost = "127.0.0.1";
-const rendererPort = Number(process.env.SLIDEFORGE_RENDERER_PORT ?? 1420);
+const rendererPort = await findAvailablePort(
+  Number(process.env.SLIDEFORGE_RENDERER_PORT ?? 1420),
+  rendererHost,
+);
 const rendererUrl = `http://${rendererHost}:${rendererPort}`;
 
 const slidevPort = String(
@@ -22,7 +25,17 @@ build.on("exit", (code) => {
 
   const vite = run(
     "pnpm",
-    ["--filter", "@slideforge/desktop", "dev"],
+    [
+      "--filter",
+      "@slideforge/desktop",
+      "exec",
+      "vite",
+      "--host",
+      rendererHost,
+      "--port",
+      String(rendererPort),
+      "--strictPort",
+    ],
     "vite",
   );
   processes.push(vite);
