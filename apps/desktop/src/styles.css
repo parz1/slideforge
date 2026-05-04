@@ -295,7 +295,7 @@ body {
 
 .app-shell {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   width: 100%;
   height: 100vh;
   overflow: hidden;
@@ -344,6 +344,51 @@ h1 {
 .topbar-actions button {
   min-width: 5.5rem;
   height: 2.35rem;
+}
+
+.workbench-tabs {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workbench-tabbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 0;
+  padding-bottom: 0.75rem;
+}
+
+.workbench-tabbar [role="tablist"] {
+  flex: 0 0 auto;
+}
+
+.workbench-tabbar [role="tab"] {
+  min-width: 7rem;
+}
+
+.workbench-tab {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workbench-tab[data-state="inactive"] {
+  display: none;
+}
+
+.project-page {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.85rem;
+}
+
+.slides-page {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.85rem;
 }
 
 .task-panel {
@@ -465,11 +510,93 @@ h1 {
 }
 
 .task-status {
+  min-width: 0;
   overflow: hidden;
   color: #5e6a75;
   font-size: 0.78rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.85rem;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.project-document {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid #d7dde3;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.project-document.assets-document {
+  grid-column: 1 / -1;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.project-document-body {
+  min-height: 0;
+  height: 100%;
+}
+
+.project-document-body pre {
+  margin: 0;
+  padding: 1rem;
+  color: #2c3642;
+  font-family:
+    "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.asset-list {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.85rem;
+}
+
+.asset-list p {
+  color: #5e6a75;
+  font-size: 0.82rem;
+}
+
+.asset-list div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f8fafb;
+  padding: 0.55rem 0.65rem;
+}
+
+.asset-list strong {
+  overflow: hidden;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-list span {
+  color: #5e6a75;
+  font-size: 0.74rem;
+}
+
+.assets-document .task-assets {
+  border-top: 1px solid #e5e7eb;
+  padding: 0.65rem 0.85rem;
 }
 
 .deck-meta {

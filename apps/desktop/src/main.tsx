@@ -611,284 +611,354 @@ function DeckWorkbench() {
         </div>
       </header>
 
-      <Card className="task-panel" aria-label="Task folder">
-        <div className="task-summary">
-          <div>
-            <p className="task-kicker">Project</p>
-            <h2>{task.name}</h2>
-            <p>{task.path}</p>
-          </div>
-          <div className="task-actions">
-            <Button type="button" variant="outline" onClick={openTaskFolder} disabled={isBusy}>
+      <Tabs defaultValue="slides" className="workbench-tabs">
+        <div className="workbench-tabbar">
+          <TabsList>
+            <TabsTrigger value="project">
               <FolderOpenIcon />
-              Switch Project
-            </Button>
-            <Button type="button" variant="outline" onClick={returnToWelcome} disabled={isBusy}>
-              <FolderOpenIcon />
-              Projects
-            </Button>
-            <Button type="button" variant="outline" onClick={reloadTaskFolder} disabled={isBusy || !task}>
-              <RefreshCwIcon />
-              Reload
-            </Button>
-            <Button type="button" variant="outline" onClick={saveDeck} disabled={isBusy || !task}>
-              <SaveIcon />
-              Save deck.yaml
-            </Button>
-            <Button type="button" onClick={generateDeck} disabled={isBusy || !task}>
-              <WandSparklesIcon />
-              Generate
-            </Button>
-          </div>
+              Project
+            </TabsTrigger>
+            <TabsTrigger value="slides">
+              <PresentationIcon />
+              Slides
+            </TabsTrigger>
+          </TabsList>
+          <p className={taskError ? "task-status warn" : "task-status"}>
+            {taskError || taskStatus}
+          </p>
         </div>
-        <div className="task-grid">
-          <TaskMetric icon={<FileTextIcon />} label="Brief" value={`${wordCount(task.brief)} chars`} />
-          <TaskMetric icon={<FileTextIcon />} label="Outline" value={`${wordCount(task.outline)} chars`} />
-          <TaskMetric icon={<ImageIcon />} label="Assets" value={`${task.assets.length} files`} />
-          <TaskMetric
-            icon={<BadgeCheckIcon />}
-            label="OpenAI"
-            value={task.envStatus.message}
-            tone={task.envStatus.hasKey && task.envStatus.hasModel ? "ok" : "warn"}
-          />
-        </div>
-        <div className="task-assets">
-          <span>Referenced assets</span>
-          {task.referencedAssets.length === 0 ? (
-            <Badge variant="outline">none</Badge>
-          ) : (
-            task.referencedAssets.map((asset) => (
-              <Badge key={asset.assetId} variant="outline">
-                {asset.path}
-              </Badge>
-            ))
-          )}
-          {task.missingAssetRefs.map((assetRef) => (
-            <Badge key={assetRef} variant="destructive">
-              missing {assetRef}
-            </Badge>
-          ))}
-        </div>
-        <p className={taskError ? "task-status warn" : "task-status"}>{taskError || taskStatus}</p>
-      </Card>
 
-      <Card className="deck-meta" aria-label="Deck metadata">
-        <div className="field">
-          <FieldLabel>Title</FieldLabel>
-          <Input
-            value={deck.meta.title}
-            onChange={(event) => updateMeta("title", event.target.value)}
-          />
-        </div>
-        <div className="field">
-          <FieldLabel>Language</FieldLabel>
-          <Input
-            value={deck.meta.language}
-            onChange={(event) => updateMeta("language", event.target.value)}
-          />
-        </div>
-        <div className="field">
-          <FieldLabel>Theme</FieldLabel>
-          <Input
-            value={deck.meta.theme}
-            onChange={(event) => updateMeta("theme", event.target.value)}
-          />
-        </div>
-        <div className="field">
-          <FieldLabel>Template</FieldLabel>
-          <Input
-            value={deck.meta.template ?? "teaching"}
-            onChange={(event) =>
-              updateMeta(
-                "template",
-                event.target.value === "teaching" ? "teaching" : undefined,
-              )
-            }
-          />
-        </div>
-      </Card>
-
-      <section className="workspace" aria-label="Deck workspace">
-        <Card className="outline-pane">
-          <CardHeader className="pane-heading">
-            <div>
-              <CardTitle>Outline</CardTitle>
-              <CardDescription>
-                {deck.slides.length} slide{deck.slides.length === 1 ? "" : "s"}
-              </CardDescription>
+        <TabsContent value="project" className="workbench-tab project-page">
+          <Card className="task-panel" aria-label="Task folder">
+            <div className="task-summary">
+              <div>
+                <p className="task-kicker">Project</p>
+                <h2>{task.name}</h2>
+                <p>{task.path}</p>
+              </div>
+              <div className="task-actions">
+                <Button type="button" variant="outline" onClick={openTaskFolder} disabled={isBusy}>
+                  <FolderOpenIcon />
+                  Switch Project
+                </Button>
+                <Button type="button" variant="outline" onClick={returnToWelcome} disabled={isBusy}>
+                  <FolderOpenIcon />
+                  Projects
+                </Button>
+                <Button type="button" variant="outline" onClick={reloadTaskFolder} disabled={isBusy || !task}>
+                  <RefreshCwIcon />
+                  Reload
+                </Button>
+                <Button type="button" variant="outline" onClick={saveDeck} disabled={isBusy || !task}>
+                  <SaveIcon />
+                  Save deck.yaml
+                </Button>
+                <Button type="button" onClick={generateDeck} disabled={isBusy || !task}>
+                  <WandSparklesIcon />
+                  Generate
+                </Button>
+              </div>
             </div>
-          </CardHeader>
-          <CardContent className="pane-content">
-            <ScrollArea className="slide-scroll">
-              <nav className="slide-list" aria-label="Slides">
-                {deck.slides.map((slide, index) => (
-                  <button
-                    className={slide.id === selectedSlide.id ? "active" : ""}
-                    key={slide.id}
-                    onClick={() => setSelectedSlideId(slide.id)}
-                    type="button"
-                  >
-                    <span className="slide-number">
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                    <strong>{slide.title}</strong>
-                    <Badge variant="outline">{slide.type}</Badge>
-                  </button>
+            <div className="task-grid">
+              <TaskMetric icon={<FileTextIcon />} label="Brief" value={`${wordCount(task.brief)} chars`} />
+              <TaskMetric icon={<FileTextIcon />} label="Outline" value={`${wordCount(task.outline)} chars`} />
+              <TaskMetric icon={<ImageIcon />} label="Assets" value={`${task.assets.length} files`} />
+              <TaskMetric
+                icon={<BadgeCheckIcon />}
+                label="OpenAI"
+                value={task.envStatus.message}
+                tone={task.envStatus.hasKey && task.envStatus.hasModel ? "ok" : "warn"}
+              />
+            </div>
+          </Card>
+
+          <section className="project-grid" aria-label="Project inputs">
+            <Card className="project-document">
+              <CardHeader className="pane-heading">
+                <div>
+                  <CardTitle>Brief</CardTitle>
+                  <CardDescription>brief.md</CardDescription>
+                </div>
+                <Badge variant="outline">{wordCount(task.brief)} chars</Badge>
+              </CardHeader>
+              <ScrollArea className="project-document-body">
+                <pre>{task.brief || "brief.md is empty."}</pre>
+              </ScrollArea>
+            </Card>
+
+            <Card className="project-document">
+              <CardHeader className="pane-heading">
+                <div>
+                  <CardTitle>Outline</CardTitle>
+                  <CardDescription>outline.md</CardDescription>
+                </div>
+                <Badge variant="outline">{wordCount(task.outline)} chars</Badge>
+              </CardHeader>
+              <ScrollArea className="project-document-body">
+                <pre>{task.outline || "outline.md is empty."}</pre>
+              </ScrollArea>
+            </Card>
+
+            <Card className="project-document assets-document">
+              <CardHeader className="pane-heading">
+                <div>
+                  <CardTitle>Assets</CardTitle>
+                  <CardDescription>assets/ and referenced files</CardDescription>
+                </div>
+                <Badge variant="outline">{task.assets.length} files</Badge>
+              </CardHeader>
+              <ScrollArea className="project-document-body">
+                <div className="asset-list">
+                  {task.assets.length === 0 ? <p>No assets yet.</p> : null}
+                  {task.assets.map((asset) => (
+                    <div key={asset.id}>
+                      <strong>{asset.path}</strong>
+                      <span>{asset.kind}</span>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+              <div className="task-assets">
+                <span>Referenced</span>
+                {task.referencedAssets.length === 0 ? (
+                  <Badge variant="outline">none</Badge>
+                ) : (
+                  task.referencedAssets.map((asset) => (
+                    <Badge key={asset.assetId} variant="outline">
+                      {asset.path}
+                    </Badge>
+                  ))
+                )}
+                {task.missingAssetRefs.map((assetRef) => (
+                  <Badge key={assetRef} variant="destructive">
+                    missing {assetRef}
+                  </Badge>
                 ))}
-              </nav>
-            </ScrollArea>
-          </CardContent>
-        </Card>
+              </div>
+            </Card>
+          </section>
+        </TabsContent>
 
-        <Card className="editor-pane" aria-label="Current slide editor">
-          <CardHeader className="pane-heading">
-            <div>
-              <CardTitle>Slide Editor</CardTitle>
-              <CardDescription>{selectedSlide.id}</CardDescription>
-            </div>
-          </CardHeader>
-
-          <div className="editor-grid">
+        <TabsContent value="slides" className="workbench-tab slides-page">
+          <Card className="deck-meta" aria-label="Deck metadata">
             <div className="field">
-              <FieldLabel>Slide title</FieldLabel>
+              <FieldLabel>Title</FieldLabel>
               <Input
-                value={selectedSlide.title}
+                value={deck.meta.title}
+                onChange={(event) => updateMeta("title", event.target.value)}
+              />
+            </div>
+            <div className="field">
+              <FieldLabel>Language</FieldLabel>
+              <Input
+                value={deck.meta.language}
+                onChange={(event) => updateMeta("language", event.target.value)}
+              />
+            </div>
+            <div className="field">
+              <FieldLabel>Theme</FieldLabel>
+              <Input
+                value={deck.meta.theme}
+                onChange={(event) => updateMeta("theme", event.target.value)}
+              />
+            </div>
+            <div className="field">
+              <FieldLabel>Template</FieldLabel>
+              <Input
+                value={deck.meta.template ?? "teaching"}
                 onChange={(event) =>
-                  updateSelectedSlide((slide) => ({
-                    ...slide,
-                    title: event.target.value,
-                  }))
+                  updateMeta(
+                    "template",
+                    event.target.value === "teaching" ? "teaching" : undefined,
+                  )
                 }
               />
             </div>
+          </Card>
 
-            <div className="field">
-              <FieldLabel>Slide type</FieldLabel>
-              <Select
-                value={selectedSlide.type}
-                onValueChange={(value) =>
-                  updateSelectedSlide((slide) => ({
-                    ...slide,
-                    type: value as SlideType,
-                  }))
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {slideTypes.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {type}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <ContentEditor slide={selectedSlide} updateContent={updateContent} />
-
-          <div className="field">
-            <FieldLabel>Visual asset</FieldLabel>
-            <Select
-              value={selectedSlide.visual?.assetId ?? "__none"}
-              onValueChange={(value) =>
-                updateSelectedSlide((slide) => ({
-                  ...slide,
-                  visual:
-                    value === "__none"
-                      ? undefined
-                      : {
-                          assetId: value,
-                          role: "primary",
-                          alt: imageAssets.find((asset) => asset.id === value)?.description,
-                        },
-                }))
-              }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none">No visual</SelectItem>
-                {imageAssets.map((asset) => (
-                  <SelectItem key={asset.id} value={asset.id}>
-                    {asset.path}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="notes-editor field">
-            <FieldLabel>Speaker notes</FieldLabel>
-            <Textarea
-              value={selectedSlide.speakerNotes ?? ""}
-              onChange={(event) =>
-                updateSelectedSlide((slide) => ({
-                  ...slide,
-                  speakerNotes: event.target.value,
-                }))
-              }
-            />
-          </div>
-        </Card>
-
-        <Card className="inspect-pane">
-          <CardHeader className="pane-heading">
-            <div>
-              <CardTitle>Inspect</CardTitle>
-              <CardDescription>Preview and structure</CardDescription>
-            </div>
-            <Badge variant={validation.length === 0 ? "secondary" : "destructive"}>
-              {validation.length === 0 ? "valid" : `${validation.length} issues`}
-            </Badge>
-          </CardHeader>
-
-          <Tabs defaultValue="preview" className="inspect-tabs">
-            <TabsList className="mx-3 mt-3 grid grid-cols-3">
-              <TabsTrigger value="preview">
-                <EyeIcon />
-                Preview
-              </TabsTrigger>
-              <TabsTrigger value="checks">Checks</TabsTrigger>
-              <TabsTrigger value="spec">Spec</TabsTrigger>
-            </TabsList>
-            <TabsContent value="preview">
-              <SlidePreview assets={deck.assets ?? []} slide={selectedSlide} />
-            </TabsContent>
-            <TabsContent value="checks">
-              <section className="issues">
-                {validation.length === 0 ? (
-                  <p>No blocking issues.</p>
-                ) : (
-                  <ul>
-                    {validation.map((issue) => (
-                      <li key={issue}>{issue}</li>
+          <section className="workspace" aria-label="Deck workspace">
+            <Card className="outline-pane">
+              <CardHeader className="pane-heading">
+                <div>
+                  <CardTitle>Outline</CardTitle>
+                  <CardDescription>
+                    {deck.slides.length} slide{deck.slides.length === 1 ? "" : "s"}
+                  </CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent className="pane-content">
+                <ScrollArea className="slide-scroll">
+                  <nav className="slide-list" aria-label="Slides">
+                    {deck.slides.map((slide, index) => (
+                      <button
+                        className={slide.id === selectedSlide.id ? "active" : ""}
+                        key={slide.id}
+                        onClick={() => setSelectedSlideId(slide.id)}
+                        type="button"
+                      >
+                        <span className="slide-number">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                        <strong>{slide.title}</strong>
+                        <Badge variant="outline">{slide.type}</Badge>
+                      </button>
                     ))}
-                  </ul>
-                )}
-                {task?.missingAssetRefs.length ? (
-                  <>
-                    <h3>Missing assets</h3>
-                    <ul>
-                      {task.missingAssetRefs.map((assetRef) => (
-                        <li key={assetRef}>{assetRef}</li>
+                  </nav>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+
+            <Card className="editor-pane" aria-label="Current slide editor">
+              <CardHeader className="pane-heading">
+                <div>
+                  <CardTitle>Slide Editor</CardTitle>
+                  <CardDescription>{selectedSlide.id}</CardDescription>
+                </div>
+              </CardHeader>
+
+              <div className="editor-grid">
+                <div className="field">
+                  <FieldLabel>Slide title</FieldLabel>
+                  <Input
+                    value={selectedSlide.title}
+                    onChange={(event) =>
+                      updateSelectedSlide((slide) => ({
+                        ...slide,
+                        title: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+
+                <div className="field">
+                  <FieldLabel>Slide type</FieldLabel>
+                  <Select
+                    value={selectedSlide.type}
+                    onValueChange={(value) =>
+                      updateSelectedSlide((slide) => ({
+                        ...slide,
+                        type: value as SlideType,
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {slideTypes.map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {type}
+                        </SelectItem>
                       ))}
-                    </ul>
-                  </>
-                ) : null}
-              </section>
-            </TabsContent>
-            <TabsContent value="spec" className="spec-tab">
-              <section className="spec-preview">
-                <pre>{JSON.stringify(selectedSlide, null, 2)}</pre>
-              </section>
-            </TabsContent>
-          </Tabs>
-        </Card>
-      </section>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <ContentEditor slide={selectedSlide} updateContent={updateContent} />
+
+              <div className="field">
+                <FieldLabel>Visual asset</FieldLabel>
+                <Select
+                  value={selectedSlide.visual?.assetId ?? "__none"}
+                  onValueChange={(value) =>
+                    updateSelectedSlide((slide) => ({
+                      ...slide,
+                      visual:
+                        value === "__none"
+                          ? undefined
+                          : {
+                              assetId: value,
+                              role: "primary",
+                              alt: imageAssets.find((asset) => asset.id === value)?.description,
+                            },
+                    }))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">No visual</SelectItem>
+                    {imageAssets.map((asset) => (
+                      <SelectItem key={asset.id} value={asset.id}>
+                        {asset.path}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="notes-editor field">
+                <FieldLabel>Speaker notes</FieldLabel>
+                <Textarea
+                  value={selectedSlide.speakerNotes ?? ""}
+                  onChange={(event) =>
+                    updateSelectedSlide((slide) => ({
+                      ...slide,
+                      speakerNotes: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </Card>
+
+            <Card className="inspect-pane">
+              <CardHeader className="pane-heading">
+                <div>
+                  <CardTitle>Inspect</CardTitle>
+                  <CardDescription>Preview and structure</CardDescription>
+                </div>
+                <Badge variant={validation.length === 0 ? "secondary" : "destructive"}>
+                  {validation.length === 0 ? "valid" : `${validation.length} issues`}
+                </Badge>
+              </CardHeader>
+
+              <Tabs defaultValue="preview" className="inspect-tabs">
+                <TabsList className="mx-3 mt-3 grid grid-cols-3">
+                  <TabsTrigger value="preview">
+                    <EyeIcon />
+                    Preview
+                  </TabsTrigger>
+                  <TabsTrigger value="checks">Checks</TabsTrigger>
+                  <TabsTrigger value="spec">Spec</TabsTrigger>
+                </TabsList>
+                <TabsContent value="preview">
+                  <SlidePreview assets={deck.assets ?? []} slide={selectedSlide} />
+                </TabsContent>
+                <TabsContent value="checks">
+                  <section className="issues">
+                    {validation.length === 0 ? (
+                      <p>No blocking issues.</p>
+                    ) : (
+                      <ul>
+                        {validation.map((issue) => (
+                          <li key={issue}>{issue}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {task?.missingAssetRefs.length ? (
+                      <>
+                        <h3>Missing assets</h3>
+                        <ul>
+                          {task.missingAssetRefs.map((assetRef) => (
+                            <li key={assetRef}>{assetRef}</li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : null}
+                  </section>
+                </TabsContent>
+                <TabsContent value="spec" className="spec-tab">
+                  <section className="spec-preview">
+                    <pre>{JSON.stringify(selectedSlide, null, 2)}</pre>
+                  </section>
+                </TabsContent>
+              </Tabs>
+            </Card>
+          </section>
+        </TabsContent>
+      </Tabs>
     </main>
   );
 }
