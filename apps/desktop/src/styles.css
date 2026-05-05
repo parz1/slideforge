@@ -387,7 +387,7 @@ h1 {
 
 .slides-page {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 0.85rem;
 }
 
@@ -614,13 +614,14 @@ h1 {
 
 .workspace {
   display: grid;
-  grid-template-columns: 280px minmax(420px, 1fr) 360px;
+  grid-template-columns: 280px minmax(520px, 1fr) 360px;
   min-height: 0;
   overflow: hidden;
   gap: 0.85rem;
 }
 
 .outline-pane,
+.yaml-editor-pane,
 .editor-pane,
 .inspect-pane {
   min-height: 0;
@@ -630,6 +631,7 @@ h1 {
 }
 
 .outline-pane,
+.yaml-editor-pane,
 .inspect-pane {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -722,6 +724,45 @@ h1 {
   font-size: 0.72rem;
   font-weight: 750;
   text-transform: uppercase;
+}
+
+.yaml-editor-pane {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.yaml-editor-toolbar {
+  display: flex;
+  gap: 0.8rem;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 0.45rem 0.9rem;
+  color: #5e6a75;
+  font-size: 0.74rem;
+}
+
+.yaml-editor {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  resize: none;
+  border: 0;
+  border-radius: 0;
+  background:
+    linear-gradient(90deg, #f8fafb 0, #f8fafb 3.2rem, transparent 3.2rem),
+    #ffffff;
+  color: #18202a;
+  font-family:
+    "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  padding: 0.85rem 0.95rem 0.85rem 4rem;
+  tab-size: 2;
+  white-space: pre;
+}
+
+.yaml-editor:focus-visible {
+  box-shadow: inset 0 0 0 2px #0f766e;
+  outline: 0;
 }
 
 .editor-pane {

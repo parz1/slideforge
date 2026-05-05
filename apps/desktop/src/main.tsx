@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM, { type Root } from "react-dom/client";
+import yaml from "js-yaml";
 import {
   BadgeCheckIcon,
   EyeIcon,
@@ -25,13 +26,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label as FieldLabel } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import "./styles.css";
@@ -285,6 +279,8 @@ function App() {
 
 function DeckWorkbench() {
   const [deck, setDeck] = useState(initialDeck);
+  const [deckYamlText, setDeckYamlText] = useState(() => deckToYaml(initialDeck));
+  const [deckYamlError, setDeckYamlError] = useState("");
   const [selectedSlideId, setSelectedSlideId] = useState(deck.slides[0]?.id ?? "");
   const [task, setTask] = useState<TaskFolderPayload | null>(null);
   const [taskStatus, setTaskStatus] = useState("No project opened.");
@@ -299,12 +295,13 @@ function DeckWorkbench() {
     deck.slides.findIndex((slide) => slide.id === selectedSlideId),
   );
   const selectedSlide = deck.slides[selectedIndex] ?? deck.slides[0];
-  const validation = useMemo(() => validateDeck(deck), [deck]);
-  const imageAssets = useMemo(
-    () => (deck.assets ?? task?.assets ?? []).filter((asset) => asset.kind === "image"),
-    [deck.assets, task?.assets],
+  const validation = useMemo(
+    () => [
+      ...(deckYamlError ? [`deck.yaml: ${deckYamlError}`] : []),
+      ...validateDeck(deck),
+    ],
+    [deck, deckYamlError],
   );
-
   useEffect(() => {
     if (!task || !selectedSlide) {
       return;
@@ -338,41 +335,6 @@ function DeckWorkbench() {
     previewWindow.current = target;
     writePreviewWindow(target, selectedSlide);
     target.focus();
-  }
-
-  function updateMeta<K extends keyof DeckSpec["meta"]>(
-    key: K,
-    value: DeckSpec["meta"][K],
-  ) {
-    setDeck((current) => ({
-      ...current,
-      meta: {
-        ...current.meta,
-        [key]: value,
-      },
-    }));
-  }
-
-  function updateSelectedSlide(updater: (slide: DeckSlide) => DeckSlide) {
-    if (!selectedSlide) {
-      return;
-    }
-    setDeck((current) => ({
-      ...current,
-      slides: current.slides.map((slide) =>
-        slide.id === selectedSlide.id ? updater(slide) : slide,
-      ),
-    }));
-  }
-
-  function updateContent(key: string, value: unknown) {
-    updateSelectedSlide((slide) => ({
-      ...slide,
-      content: {
-        ...slide.content,
-        [key]: value,
-      },
-    }));
   }
 
   async function refreshVault() {
@@ -450,6 +412,10 @@ function DeckWorkbench() {
       setTaskError("Open a task folder before saving deck.yaml.");
       return;
     }
+    if (deckYamlError) {
+      setTaskError("Fix deck.yaml before saving.");
+      return;
+    }
     await runTaskAction("Save deck", async () => {
       await invokeDesktop("save_task_deck", {
         path: task.path,
@@ -469,8 +435,7 @@ function DeckWorkbench() {
         path: task.path,
       });
       const generatedDeck = normalizeTaskDeck(result.deck, task);
-      setDeck(generatedDeck);
-      setSelectedSlideId(generatedDeck.slides[0]?.id ?? "");
+      applyDeck(generatedDeck, true);
       setTask((current) =>
         current
           ? {
@@ -490,6 +455,10 @@ function DeckWorkbench() {
   async function buildDeck() {
     if (!task) {
       setTaskError("Open a task folder before building output.");
+      return;
+    }
+    if (deckYamlError) {
+      setTaskError("Fix deck.yaml before building output.");
       return;
     }
     await runTaskAction("Build deck", async () => {
@@ -522,8 +491,32 @@ function DeckWorkbench() {
     const nextDeck = payload.deck
       ? normalizeTaskDeck(payload.deck, payload)
       : createEmptyTaskDeck(payload);
+    applyDeck(nextDeck, true);
+  }
+
+  function applyDeck(nextDeck: DeckSpec, syncYaml: boolean) {
     setDeck(nextDeck);
     setSelectedSlideId(nextDeck.slides[0]?.id ?? "");
+    setDeckYamlError("");
+    if (syncYaml) {
+      setDeckYamlText(deckToYaml(nextDeck));
+    }
+  }
+
+  function updateDeckYaml(value: string) {
+    setDeckYamlText(value);
+    try {
+      const parsedDeck = parseDeckYaml(value, task);
+      setDeck(parsedDeck);
+      setDeckYamlError("");
+      setSelectedSlideId((currentSlideId) =>
+        parsedDeck.slides.some((slide) => slide.id === currentSlideId)
+          ? currentSlideId
+          : parsedDeck.slides[0]?.id ?? "",
+      );
+    } catch (error) {
+      setDeckYamlError(error instanceof Error ? error.message : String(error));
+    }
   }
 
   async function openTaskPayload(payload: TaskFolderPayload, showWorkbenchWindow: boolean) {
@@ -740,42 +733,6 @@ function DeckWorkbench() {
         </TabsContent>
 
         <TabsContent value="slides" className="workbench-tab slides-page">
-          <Card className="deck-meta" aria-label="Deck metadata">
-            <div className="field">
-              <FieldLabel>Title</FieldLabel>
-              <Input
-                value={deck.meta.title}
-                onChange={(event) => updateMeta("title", event.target.value)}
-              />
-            </div>
-            <div className="field">
-              <FieldLabel>Language</FieldLabel>
-              <Input
-                value={deck.meta.language}
-                onChange={(event) => updateMeta("language", event.target.value)}
-              />
-            </div>
-            <div className="field">
-              <FieldLabel>Theme</FieldLabel>
-              <Input
-                value={deck.meta.theme}
-                onChange={(event) => updateMeta("theme", event.target.value)}
-              />
-            </div>
-            <div className="field">
-              <FieldLabel>Template</FieldLabel>
-              <Input
-                value={deck.meta.template ?? "teaching"}
-                onChange={(event) =>
-                  updateMeta(
-                    "template",
-                    event.target.value === "teaching" ? "teaching" : undefined,
-                  )
-                }
-              />
-            </div>
-          </Card>
-
           <section className="workspace" aria-label="Deck workspace">
             <Card className="outline-pane">
               <CardHeader className="pane-heading">
@@ -808,99 +765,29 @@ function DeckWorkbench() {
               </CardContent>
             </Card>
 
-            <Card className="editor-pane" aria-label="Current slide editor">
+            <Card className="yaml-editor-pane" aria-label="Deck YAML editor">
               <CardHeader className="pane-heading">
                 <div>
-                  <CardTitle>Slide Editor</CardTitle>
-                  <CardDescription>{selectedSlide.id}</CardDescription>
+                  <CardTitle>deck.yaml</CardTitle>
+                  <CardDescription>
+                    {deck.meta.title} · {deck.meta.template ?? "teaching"} · {deck.meta.theme}
+                  </CardDescription>
                 </div>
+                <Badge variant={deckYamlError ? "destructive" : "secondary"}>
+                  {deckYamlError ? "invalid YAML" : "parsed"}
+                </Badge>
               </CardHeader>
-
-              <div className="editor-grid">
-                <div className="field">
-                  <FieldLabel>Slide title</FieldLabel>
-                  <Input
-                    value={selectedSlide.title}
-                    onChange={(event) =>
-                      updateSelectedSlide((slide) => ({
-                        ...slide,
-                        title: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-
-                <div className="field">
-                  <FieldLabel>Slide type</FieldLabel>
-                  <Select
-                    value={selectedSlide.type}
-                    onValueChange={(value) =>
-                      updateSelectedSlide((slide) => ({
-                        ...slide,
-                        type: value as SlideType,
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {slideTypes.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {type}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="yaml-editor-toolbar">
+                <span>{deck.slides.length} slides</span>
+                <span>{deck.assets?.length ?? 0} assets</span>
+                <span>{deckYamlText.length} chars</span>
               </div>
-
-              <ContentEditor slide={selectedSlide} updateContent={updateContent} />
-
-              <div className="field">
-                <FieldLabel>Visual asset</FieldLabel>
-                <Select
-                  value={selectedSlide.visual?.assetId ?? "__none"}
-                  onValueChange={(value) =>
-                    updateSelectedSlide((slide) => ({
-                      ...slide,
-                      visual:
-                        value === "__none"
-                          ? undefined
-                          : {
-                              assetId: value,
-                              role: "primary",
-                              alt: imageAssets.find((asset) => asset.id === value)?.description,
-                            },
-                    }))
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">No visual</SelectItem>
-                    {imageAssets.map((asset) => (
-                      <SelectItem key={asset.id} value={asset.id}>
-                        {asset.path}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="notes-editor field">
-                <FieldLabel>Speaker notes</FieldLabel>
-                <Textarea
-                  value={selectedSlide.speakerNotes ?? ""}
-                  onChange={(event) =>
-                    updateSelectedSlide((slide) => ({
-                      ...slide,
-                      speakerNotes: event.target.value,
-                    }))
-                  }
-                />
-              </div>
+              <Textarea
+                className="yaml-editor"
+                spellCheck={false}
+                value={deckYamlText}
+                onChange={(event) => updateDeckYaml(event.target.value)}
+              />
             </Card>
 
             <Card className="inspect-pane">
@@ -1126,169 +1013,6 @@ function ActiveSlidePreviewApp() {
   );
 }
 
-function ContentEditor({
-  slide,
-  updateContent,
-}: {
-  slide: DeckSlide;
-  updateContent: (key: string, value: unknown) => void;
-}) {
-  switch (slide.type) {
-    case "cover":
-    case "closing":
-      return (
-        <div className="field-block field">
-          <FieldLabel>{slide.type === "cover" ? "Subtitle" : "Statement"}</FieldLabel>
-          <Textarea
-            value={stringValue(slide.content, slide.type === "cover" ? "subtitle" : "statement")}
-            onChange={(event) =>
-              updateContent(slide.type === "cover" ? "subtitle" : "statement", event.target.value)
-            }
-          />
-        </div>
-      );
-    case "metric_grid":
-      return (
-        <StructuredTextarea
-          label="Metrics"
-          value={slide.content.metrics}
-          onChange={(value) => updateContent("metrics", value)}
-        />
-      );
-    case "principle_card":
-      return (
-        <StructuredTextarea
-          label="Cards"
-          value={slide.content.cards}
-          onChange={(value) => updateContent("cards", value)}
-        />
-      );
-    case "two_column":
-    case "comparison":
-      return (
-        <StructuredTextarea
-          label="Columns"
-          value={slide.content.columns}
-          onChange={(value) => updateContent("columns", value)}
-        />
-      );
-    case "code_explain":
-      return (
-        <div className="content-stack">
-          <div className="field">
-            <FieldLabel>Language</FieldLabel>
-            <Input
-              value={stringValue(slide.content, "language")}
-              onChange={(event) => updateContent("language", event.target.value)}
-            />
-          </div>
-          <div className="field">
-            <FieldLabel>Code</FieldLabel>
-            <Textarea
-              className="code-input"
-              value={stringValue(slide.content, "code")}
-              onChange={(event) => updateContent("code", event.target.value)}
-            />
-          </div>
-          <div className="field">
-            <FieldLabel>Note</FieldLabel>
-            <Textarea
-              value={stringValue(slide.content, "note")}
-              onChange={(event) => updateContent("note", event.target.value)}
-            />
-          </div>
-        </div>
-      );
-    case "trace_table":
-      return (
-        <div className="content-stack">
-          <StructuredTextarea
-            label="Columns"
-            value={slide.content.columns}
-            onChange={(value) => updateContent("columns", value)}
-          />
-          <StructuredTextarea
-            label="Rows"
-            value={slide.content.rows}
-            onChange={(value) => updateContent("rows", value)}
-          />
-        </div>
-      );
-    case "bullet_summary":
-    case "process":
-    case "checklist":
-      return (
-        <StructuredTextarea
-          label={slide.type === "process" ? "Steps" : "Items"}
-          value={slide.content.points ?? slide.content.steps ?? slide.content.items}
-          onChange={(value) =>
-            updateContent(slide.type === "bullet_summary" ? "points" : slide.type === "process" ? "steps" : "items", value)
-          }
-        />
-      );
-    case "workflow":
-      return (
-        <StructuredTextarea
-          label="Workflow steps"
-          value={slide.content.steps}
-          onChange={(value) => updateContent("steps", value)}
-        />
-      );
-    case "note_callout":
-      return (
-        <div className="field-block field">
-          <FieldLabel>Body</FieldLabel>
-          <Textarea
-            value={stringValue(slide.content, "body")}
-            onChange={(event) => updateContent("body", event.target.value)}
-          />
-        </div>
-      );
-    case "section":
-      return <div className="empty-state">Section slides use the title only.</div>;
-  }
-}
-
-function StructuredTextarea({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: unknown;
-  onChange: (value: unknown) => void;
-}) {
-  const [draft, setDraft] = useState(JSON.stringify(value ?? [], null, 2));
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    setDraft(JSON.stringify(value ?? [], null, 2));
-    setError("");
-  }, [value]);
-
-  function applyDraft(nextDraft: string) {
-    setDraft(nextDraft);
-    try {
-      onChange(JSON.parse(nextDraft));
-      setError("");
-    } catch {
-      setError("Invalid JSON");
-    }
-  }
-
-  return (
-    <div className="field-block field">
-      <FieldLabel>{label}</FieldLabel>
-      <Textarea
-        className="json-input"
-        value={draft}
-        onChange={(event) => applyDraft(event.target.value)}
-      />
-      {error ? <small className="field-error">{error}</small> : null}
-    </div>
-  );
-}
-
 function TaskMetric({
   icon,
   label,
@@ -1371,6 +1095,9 @@ function validateDeck(deck: DeckSpec): string[] {
     if (!slide.id.trim()) {
       issues.push(`Slide ${index + 1} needs an id.`);
     }
+    if (!slideTypes.includes(slide.type)) {
+      issues.push(`Slide ${index + 1} uses unsupported type "${slide.type}".`);
+    }
     if (slide.visual && !assetIds.has(slide.visual.assetId)) {
       issues.push(`Slide ${index + 1} references a missing visual asset.`);
     }
@@ -1410,6 +1137,66 @@ function normalizeTaskDeck(deck: DeckSpec, task: TaskFolderPayload): DeckSpec {
     },
     assets: deck.assets && deck.assets.length > 0 ? deck.assets : task.assets,
   };
+}
+
+function deckToYaml(deck: DeckSpec): string {
+  return yaml.dump(deck, {
+    lineWidth: 100,
+    noRefs: true,
+    quotingType: '"',
+  });
+}
+
+function parseDeckYaml(value: string, task: TaskFolderPayload | null): DeckSpec {
+  const parsed = yaml.load(value);
+  const deck = coerceDeckSpec(parsed);
+  return task ? normalizeTaskDeck(deck, task) : deck;
+}
+
+function coerceDeckSpec(value: unknown): DeckSpec {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("root must be a YAML object.");
+  }
+  const candidate = value as Partial<DeckSpec>;
+  if (!candidate.meta || typeof candidate.meta !== "object") {
+    throw new Error("meta is required.");
+  }
+  const meta = candidate.meta as Partial<DeckSpec["meta"]>;
+  if (typeof meta.title !== "string") {
+    throw new Error("meta.title must be a string.");
+  }
+  if (typeof meta.language !== "string") {
+    throw new Error("meta.language must be a string.");
+  }
+  if (typeof meta.theme !== "string") {
+    throw new Error("meta.theme must be a string.");
+  }
+  if (!Array.isArray(candidate.slides)) {
+    throw new Error("slides must be an array.");
+  }
+  for (const [index, slide] of candidate.slides.entries()) {
+    if (!slide || typeof slide !== "object" || Array.isArray(slide)) {
+      throw new Error(`slides[${index}] must be an object.`);
+    }
+    const candidateSlide = slide as Partial<DeckSlide>;
+    if (typeof candidateSlide.id !== "string") {
+      throw new Error(`slides[${index}].id must be a string.`);
+    }
+    if (typeof candidateSlide.type !== "string") {
+      throw new Error(`slides[${index}].type must be a string.`);
+    }
+    if (typeof candidateSlide.title !== "string") {
+      throw new Error(`slides[${index}].title must be a string.`);
+    }
+    if (
+      !candidateSlide.content ||
+      typeof candidateSlide.content !== "object" ||
+      Array.isArray(candidateSlide.content)
+    ) {
+      throw new Error(`slides[${index}].content must be an object.`);
+    }
+  }
+  return candidate as DeckSpec;
 }
 
 function wordCount(value: string): number {
