@@ -1,595 +1,319 @@
-import type { DeckAsset, DeckSlide, DeckSpec, RenderedSlidevProject } from "./types";
+import yaml from "js-yaml";
+import {
+  builtinLayouts,
+  defaultLayoutForSlideType,
+  getLayoutDefinition,
+} from "./layouts";
+import type {
+  DeckAsset,
+  DeckSlide,
+  DeckSpec,
+  LayoutDefinition,
+  LayoutId,
+  RenderedSlidevProject,
+  ThemeTokens,
+} from "./types";
 
-type ContentObject = Record<string, unknown>;
-interface RenderContext {
-  assets: DeckAsset[];
-}
+type SlideFrontmatter = Record<string, unknown>;
 
 export function renderSlidev(spec: DeckSpec): RenderedSlidevProject {
-  const context: RenderContext = {
-    assets: spec.assets ?? [],
-  };
+  const assetsById = new Map((spec.assets ?? []).map((asset) => [asset.id, asset]));
+  const normalizedSlides = spec.slides.map((slide) => normalizeSlide(slide, assetsById));
+  const usedLayouts = usedLayoutDefinitions(normalizedSlides);
   const slidesMd = [
     renderHeadmatter(spec),
-    spec.slides.map((slide) => renderSlideWithNotes(slide, context)).join("\n\n---\n\n"),
+    normalizedSlides.map(renderSlidePage).join("\n\n---\n\n"),
   ].join("\n\n");
 
   return {
     files: [
       { path: "slides.md", content: slidesMd },
-      { path: "style.css", content: renderStyleCss() },
+      { path: "style.css", content: renderStyleCss(spec) },
+      ...usedLayouts.map((layout) => ({
+        path: `layouts/${layout.vueFile}`,
+        content: layout.vueSource,
+      })),
     ],
   };
 }
 
 function renderHeadmatter(spec: DeckSpec): string {
-  return [
-    "---",
-    "theme: seriph",
-    `title: ${quoteYaml(spec.meta.title)}`,
-    "transition: slide-left",
-    "drawings:",
-    "  persist: false",
-    "mdc: true",
-    "colorSchema: light",
-    "---",
-  ].join("\n");
+  return frontmatter({
+    theme: "seriph",
+    title: spec.meta.title,
+    transition: "slide-left",
+    drawings: { persist: false },
+    mdc: true,
+    colorSchema: "light",
+    class: `slideforge-${spec.meta.template ?? "layout"} slideforge-${themeId(spec)}`,
+  });
 }
 
-function renderSlideWithNotes(slide: DeckSlide, context: RenderContext): string {
-  const body = renderSlide(slide, context);
+function renderSlidePage(slide: DeckSlide): string {
+  const page = frontmatter(slideFrontmatter(slide));
   if (!slide.speakerNotes) {
-    return body;
+    return page;
   }
-
-  return [body, "", "<!--", slide.speakerNotes, "-->"].join("\n");
+  return [page, "", "<!--", slide.speakerNotes, "-->"].join("\n");
 }
 
-function renderSlide(slide: DeckSlide, context: RenderContext): string {
-  const rendered = (() => {
+function slideFrontmatter(slide: DeckSlide): SlideFrontmatter {
+  const props = normalizeAssetProps({
+    ...slide.props,
+    title: slide.title,
+  });
+  return {
+    layout: slide.layout,
+    id: slide.id,
+    ...props,
+  };
+}
+
+function normalizeSlide(slide: DeckSlide, assetsById: Map<string, DeckAsset>): DeckSlide {
+  const layout = slide.layout || defaultLayoutForSlideType(slide.type);
+  const props = slide.props ?? legacyProps(slide, assetsById);
+  return {
+    ...slide,
+    layout,
+    props,
+  };
+}
+
+function legacyProps(slide: DeckSlide, assetsById: Map<string, DeckAsset>): Record<string, unknown> {
+  const content = slide.content ?? {};
   switch (slide.type) {
     case "cover":
-      return renderCover(slide);
-    case "bullet_summary":
-      return renderBulletSummary(slide);
-    case "process":
-      return renderProcess(slide);
-    case "workflow":
-      return renderWorkflow(slide);
-    case "closing":
-      return renderClosing(slide);
+      return {
+        subtitle: stringField(content, "subtitle"),
+        image: visualAssetPath(slide, assetsById),
+        alt: slide.visual?.alt,
+      };
     case "section":
-      return renderSection(slide);
+      return {
+        lead: stringField(content, "lead"),
+      };
+    case "bullet_summary":
+      return {
+        points: arrayField(content, "points"),
+        image: visualAssetPath(slide, assetsById),
+        alt: slide.visual?.alt,
+      };
+    case "process":
+      return {
+        points: arrayField(content, "steps"),
+      };
+    case "workflow":
+      return {
+        steps: objectArrayField(content, "steps").map((step) =>
+          [stringField(step, "label"), stringField(step, "body")].filter(Boolean).join(": "),
+        ),
+      };
+    case "code_explain":
+      return {
+        language: stringField(content, "language") || "text",
+        code: stringField(content, "code"),
+        note: stringField(content, "note"),
+        points: arrayField(content, "points"),
+      };
+    case "trace_table":
+      return {
+        steps: arrayField(content, "rows").map((row) =>
+          Array.isArray(row) ? row.map((cell) => String(cell ?? "")).join(" / ") : String(row ?? ""),
+        ),
+        sideTitle: "Columns",
+        sideItems: arrayField(content, "columns"),
+        note: stringField(content, "note"),
+      };
+    case "checklist":
+      return {
+        items: arrayField(content, "items"),
+      };
     case "comparison":
     case "two_column":
-      return renderTwoColumn(slide);
+      return {
+        columns: objectArrayField(content, "columns"),
+      };
     case "metric_grid":
-      return renderMetricGrid(slide);
-    case "principle_card":
-      return renderPrincipleCard(slide);
-    case "code_explain":
-      return renderCodeExplain(slide);
-    case "trace_table":
-      return renderTraceTable(slide);
-    case "checklist":
-      return renderChecklist(slide);
-    case "note_callout":
-      return renderNoteCallout(slide);
-  }
-  })();
-
-  const visual = renderVisual(slide, context);
-  return visual ? [rendered, "", visual].join("\n") : rendered;
-}
-
-function renderCover(slide: DeckSlide): string {
-  const subtitle = stringField(slide.content, "subtitle");
-  return [
-    '<div class="slideforge-cover">',
-    `<h1>${escapeHtml(slide.title)}</h1>`,
-    subtitle ? `<p>${escapeHtml(subtitle)}</p>` : "",
-    "</div>",
-  ].join("\n");
-}
-
-function renderBulletSummary(slide: DeckSlide): string {
-  const points = stringArrayField(slide.content, "points");
-  return [
-    `# ${slide.title}`,
-    "",
-    '<ul class="slideforge-points">',
-    ...points.map((point) =>
-      slide.animation?.preset === "step_reveal"
-        ? `  <li v-click>${escapeHtml(point)}</li>`
-        : `  <li>${escapeHtml(point)}</li>`,
-    ),
-    "</ul>",
-  ].join("\n");
-}
-
-function renderProcess(slide: DeckSlide): string {
-  const steps = stringArrayField(slide.content, "steps");
-  return [
-    `# ${slide.title}`,
-    "",
-    "<ol>",
-    ...steps.map((step) =>
-      slide.animation?.preset === "step_reveal"
-        ? `  <li v-click>${escapeHtml(step)}</li>`
-        : `  <li>${escapeHtml(step)}</li>`,
-    ),
-    "</ol>",
-  ].join("\n");
-}
-
-function renderWorkflow(slide: DeckSlide): string {
-  const steps = objectArrayField(slide.content, "steps");
-  return [
-    `# ${slide.title}`,
-    "",
-    '<div class="slideforge-workflow">',
-    ...steps.map((step) =>
-      [
-        "  <div>",
-        `    <strong>${escapeHtml(stringField(step, "label"))}</strong>`,
-        `    <span>${escapeHtml(stringField(step, "body"))}</span>`,
-        "  </div>",
-      ].join("\n"),
-    ),
-    "</div>",
-  ].join("\n");
-}
-
-function renderClosing(slide: DeckSlide): string {
-  const statement = stringField(slide.content, "statement");
-  return [
-    '<div class="slideforge-cover">',
-    `<h1>${escapeHtml(slide.title)}</h1>`,
-    statement ? `<p>${escapeHtml(statement)}</p>` : "",
-    "</div>",
-  ].join("\n");
-}
-
-function renderSection(slide: DeckSlide): string {
-  return [`# ${slide.title}`].join("\n");
-}
-
-function renderTwoColumn(slide: DeckSlide): string {
-  const columns = objectArrayField(slide.content, "columns");
-  return [
-    `# ${slide.title}`,
-    "",
-    '<div class="slideforge-two-column">',
-    ...columns.map((column) =>
-      [
-        "  <section>",
-        `    <h2>${escapeHtml(stringField(column, "title"))}</h2>`,
-        "    <ul>",
-        ...stringArrayField(column, "items").map(
-          (item) => `      <li>${escapeHtml(item)}</li>`,
+      return {
+        points: objectArrayField(content, "metrics").map((metric) =>
+          [stringField(metric, "label"), stringField(metric, "value"), stringField(metric, "note")]
+            .filter(Boolean)
+            .join(" - "),
         ),
-        "    </ul>",
-        "  </section>",
-      ].join("\n"),
-    ),
-    "</div>",
-  ].join("\n");
-}
-
-function renderMetricGrid(slide: DeckSlide): string {
-  const metrics = objectArrayField(slide.content, "metrics");
-  return [
-    `# ${slide.title}`,
-    "",
-    '<div class="slideforge-metric-grid">',
-    ...metrics.map((metric) =>
-      [
-        '  <section class="slideforge-metric">',
-        `    <span>${escapeHtml(stringField(metric, "label"))}</span>`,
-        `    <strong>${escapeHtml(stringField(metric, "value"))}</strong>`,
-        `    <small>${escapeHtml(stringField(metric, "note"))}</small>`,
-        "  </section>",
-      ].join("\n"),
-    ),
-    "</div>",
-  ].join("\n");
-}
-
-function renderPrincipleCard(slide: DeckSlide): string {
-  const cards = objectArrayField(slide.content, "cards");
-  return [
-    `# ${slide.title}`,
-    "",
-    '<div class="slideforge-card-stack">',
-    ...cards.map((card) =>
-      [
-        '  <section class="slideforge-principle-card">',
-        `    <h2>${escapeHtml(stringField(card, "title"))}</h2>`,
-        `    <p>${escapeHtml(stringField(card, "body"))}</p>`,
-        "  </section>",
-      ].join("\n"),
-    ),
-    "</div>",
-  ].join("\n");
-}
-
-function renderCodeExplain(slide: DeckSlide): string {
-  const language = stringField(slide.content, "language") || "text";
-  const code = stringField(slide.content, "code");
-  const note = stringField(slide.content, "note");
-  const points = stringArrayField(slide.content, "points");
-
-  return [
-    `# ${slide.title}`,
-    "",
-    "```" + language,
-    code,
-    "```",
-    points.length > 0
-      ? [
-          "",
-          '<ul class="slideforge-points">',
-          ...points.map((point) => `  <li>${escapeHtml(point)}</li>`),
-          "</ul>",
-        ].join("\n")
-      : "",
-    note ? renderNote(note) : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-function renderTraceTable(slide: DeckSlide): string {
-  const columns = stringArrayField(slide.content, "columns");
-  const rows = arrayField(slide.content, "rows");
-  const note = stringField(slide.content, "note");
-
-  return [
-    `# ${slide.title}`,
-    "",
-    '<table class="slideforge-trace-table">',
-    "  <thead>",
-    "    <tr>",
-    ...columns.map((column) => `      <th>${escapeHtml(column)}</th>`),
-    "    </tr>",
-    "  </thead>",
-    "  <tbody>",
-    ...rows.map((row) =>
-      Array.isArray(row)
-        ? [
-            "    <tr>",
-            ...row.map((cell) => `      <td>${escapeHtml(String(cell ?? ""))}</td>`),
-            "    </tr>",
-          ].join("\n")
-        : "",
-    ),
-    "  </tbody>",
-    "</table>",
-    note ? renderNote(note) : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-function renderChecklist(slide: DeckSlide): string {
-  const items = stringArrayField(slide.content, "items");
-  return [
-    `# ${slide.title}`,
-    "",
-    '<div class="slideforge-checklist">',
-    ...items.map(
-      (item) =>
-        `  <label><input type="checkbox" /> <span>${escapeHtml(item)}</span></label>`,
-    ),
-    "</div>",
-  ].join("\n");
-}
-
-function renderNoteCallout(slide: DeckSlide): string {
-  return [`# ${slide.title}`, "", renderNote(stringField(slide.content, "body"))].join(
-    "\n",
-  );
-}
-
-function renderNote(value: string): string {
-  return `<div class="slideforge-note">${escapeHtml(value)}</div>`;
-}
-
-function renderVisual(slide: DeckSlide, context: RenderContext): string {
-  if (!slide.visual) {
-    return "";
+      };
+    case "principle_card":
+      return {
+        points: objectArrayField(content, "cards").map((card) =>
+          [stringField(card, "title"), stringField(card, "body")].filter(Boolean).join(": "),
+        ),
+      };
+    case "note_callout":
+      return {
+        quote: stringField(content, "body"),
+      };
+    case "closing":
+      return {
+        quote: stringField(content, "statement"),
+      };
+    default:
+      return content;
   }
+}
 
-  const asset = context.assets.find((item) => item.id === slide.visual?.assetId);
-  if (!asset || asset.kind !== "image") {
-    return "";
+function visualAssetPath(slide: DeckSlide, assetsById: Map<string, DeckAsset>): string {
+  const assetId = slide.visual?.assetId;
+  return assetId ? assetsById.get(assetId)?.path ?? "" : "";
+}
+
+function usedLayoutDefinitions(slides: DeckSlide[]): LayoutDefinition[] {
+  const usedIds = new Set<LayoutId>();
+  for (const slide of slides) {
+    usedIds.add(getLayoutDefinition(slide.layout).id);
   }
-
-  const src = normalizeAssetSrc(asset.path);
-  const alt = slide.visual.alt || asset.description || slide.title;
-  return [
-    '<figure class="slideforge-visual">',
-    `  <img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" />`,
-    alt ? `  <figcaption>${escapeHtml(alt)}</figcaption>` : "",
-    "</figure>",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  return builtinLayouts.filter((layout) => usedIds.has(layout.id));
 }
 
-function normalizeAssetSrc(path: string): string {
-  return path.startsWith("./") ? path : `./${path}`;
+function normalizeAssetProps(value: Record<string, unknown>): Record<string, unknown> {
+  const normalized = { ...value };
+  for (const key of ["image", "logo"]) {
+    if (typeof normalized[key] === "string") {
+      normalized[key] = normalizeAssetPath(normalized[key]);
+    }
+  }
+  return normalized;
 }
 
-function renderStyleCss(): string {
+function normalizeAssetPath(value: string): string {
+  if (!value || /^(https?:|file:|data:|\/)/.test(value)) {
+    return value;
+  }
+  return value;
+}
+
+function frontmatter(value: Record<string, unknown>): string {
+  return ["---", yaml.dump(value, { lineWidth: 100, noRefs: true }).trim(), "---"].join("\n");
+}
+
+function themeId(spec: DeckSpec): string {
+  return spec.theme?.id || spec.meta.theme || "lecture-light";
+}
+
+function themeTokens(spec: DeckSpec): Required<ThemeTokens> {
+  const id = themeId(spec);
+  const clean = id === "clean-light" || spec.meta.template === "clean";
+  return {
+    id,
+    accent: spec.theme?.accent || (clean ? "#2563eb" : "#0f766e"),
+    background: spec.theme?.background || "#ffffff",
+    text: spec.theme?.text || "#111827",
+    muted: spec.theme?.muted || "#5e6a75",
+    logo: spec.theme?.logo || "",
+    footer: spec.theme?.footer || (clean ? "SLIDEFORGE CLEAN" : "SLIDEFORGE"),
+    fontFamily:
+      spec.theme?.fontFamily ||
+      "Arial, Helvetica, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+  };
+}
+
+function renderStyleCss(spec: DeckSpec): string {
+  const theme = themeTokens(spec);
   return [
     ":root {",
-    "  --slideforge-accent: #0f766e;",
-    "  --slideforge-accent-soft: #e1f3ef;",
-    "  --slideforge-warn: #b42318;",
-    "  --slideforge-ink: #18202a;",
-    "  --slideforge-muted: #5e6a75;",
-    "  --slideforge-line: #d7dde3;",
-    "  --slideforge-surface: #f6f8fa;",
+    `  --sf-accent: ${theme.accent};`,
+    `  --sf-background: ${theme.background};`,
+    `  --sf-text: ${theme.text};`,
+    `  --sf-muted: ${theme.muted};`,
+    "  --sf-line: color-mix(in srgb, var(--sf-accent) 26%, #d7dde3);",
+    "  --sf-soft: color-mix(in srgb, var(--sf-accent) 10%, #ffffff);",
+    `  --sf-font: ${theme.fontFamily};`,
     "}",
     "",
     ".slidev-layout {",
-    "  position: relative;",
     "  overflow: hidden;",
-    "  background: #fbfcfc;",
-    "  color: var(--slideforge-ink);",
-    "  font-size: 1.05rem;",
-    "  letter-spacing: 0;",
-    "  padding: 3.2rem 4rem 3rem;",
-    "}",
-    "",
-    ".slidev-layout::after {",
-    "  position: absolute;",
-    "  right: 2.2rem;",
-    "  bottom: 1.5rem;",
-    "  color: #8aa29f;",
-    "  content: 'SLIDEFORGE TEACHING';",
-    "  font-size: 0.58rem;",
-    "  font-weight: 700;",
-    "  letter-spacing: 0.08em;",
-    "}",
-    "",
-    ".slidev-layout h1,",
-    ".slidev-layout h2,",
-    ".slidev-layout h3 {",
-    "  color: var(--slideforge-ink);",
+    "  padding: 0;",
+    "  background: var(--sf-background);",
+    "  color: var(--sf-text);",
+    "  font-family: var(--sf-font);",
     "  letter-spacing: 0;",
     "}",
     "",
-    ".slidev-layout > h1:first-child {",
+    ".sf-slide {",
+    "  position: relative;",
     "  display: grid;",
-    "  grid-template-columns: 0.42rem minmax(0, 1fr);",
-    "  gap: 0.85rem;",
-    "  align-items: center;",
-    "  margin-bottom: 1.6rem;",
-    "  font-size: 2.15rem;",
-    "  line-height: 1.15;",
-    "}",
-    "",
-    ".slidev-layout > h1:first-child::before {",
-    "  display: block;",
-    "  width: 0.42rem;",
-    "  height: 2.3rem;",
-    "  border-radius: 999px;",
-    "  background: var(--slideforge-accent);",
-    "  content: '';",
-    "}",
-    "",
-    ".slidev-layout p,",
-    ".slidev-layout li {",
-    "  color: var(--slideforge-muted);",
-    "}",
-    "",
-    ".slideforge-cover {",
-    "  display: grid;",
-    "  min-height: 70%;",
-    "  place-content: center;",
-    "  text-align: center;",
-    "  border: 1px solid var(--slideforge-line);",
-    "  border-radius: 10px;",
-    "  background: linear-gradient(135deg, #ffffff 0%, #eef8f6 100%);",
-    "  padding: 3rem;",
-    "}",
-    "",
-    ".slideforge-cover h1 {",
-    "  font-size: 3.4rem;",
-    "}",
-    "",
-    ".slideforge-cover p {",
-    "  margin-top: 1rem;",
-    "  font-size: 1.35rem;",
-    "}",
-    "",
-    ".slideforge-points li {",
-    "  margin: 0.55rem 0;",
-    "}",
-    "",
-    ".slideforge-two-column,",
-    ".slideforge-metric-grid {",
-    "  display: grid;",
-    "  grid-template-columns: repeat(2, minmax(0, 1fr));",
-    "  gap: 1.5rem;",
-    "  margin-top: 1.5rem;",
-    "}",
-    "",
-    ".slideforge-metric-grid {",
-    "  grid-template-columns: repeat(3, minmax(0, 1fr));",
-    "}",
-    "",
-    ".slideforge-two-column section,",
-    ".slideforge-metric,",
-    ".slideforge-principle-card {",
-    "  border: 1px solid var(--slideforge-line);",
-    "  border-radius: 8px;",
-    "  background: #fff;",
-    "}",
-    "",
-    ".slideforge-two-column section {",
-    "  padding: 1rem 1.2rem;",
-    "}",
-    "",
-    ".slideforge-metric {",
-    "  display: grid;",
-    "  gap: 0.25rem;",
-    "  min-height: 8.5rem;",
-    "  padding: 1rem;",
-    "}",
-    "",
-    ".slideforge-metric span,",
-    ".slideforge-metric small {",
-    "  color: var(--slideforge-muted);",
-    "}",
-    "",
-    ".slideforge-metric strong {",
-    "  align-self: center;",
-    "  color: var(--slideforge-warn);",
-    "  font-size: 2rem;",
-    "  line-height: 1;",
-    "}",
-    "",
-    ".slideforge-card-stack {",
-    "  display: grid;",
-    "  gap: 1rem;",
-    "  margin-top: 1.5rem;",
-    "}",
-    "",
-    ".slideforge-principle-card {",
-    "  padding: 1.1rem 1.25rem;",
-    "}",
-    "",
-    ".slideforge-principle-card h2 {",
-    "  margin: 0;",
-    "  color: var(--slideforge-accent);",
-    "  font-size: 1.2rem;",
-    "}",
-    "",
-    ".slideforge-principle-card p {",
-    "  margin: 0.5rem 0 0;",
-    "  line-height: 1.6;",
-    "}",
-    "",
-    ".slideforge-workflow {",
-    "  display: grid;",
-    "  gap: 0.75rem;",
-    "  margin-top: 2rem;",
-    "}",
-    "",
-    ".slideforge-workflow div {",
-    "  display: grid;",
-    "  grid-template-columns: 10rem 1fr;",
-    "  gap: 1.5rem;",
-    "  align-items: center;",
-    "  border-left: 4px solid var(--slideforge-accent);",
-    "  background: var(--slideforge-surface);",
-    "  padding: 0.8rem 1rem;",
-    "}",
-    "",
-    ".slideforge-workflow strong {",
-    "  color: var(--slideforge-ink);",
-    "}",
-    "",
-    ".slideforge-trace-table {",
     "  width: 100%;",
-    "  margin-top: 1.25rem;",
-    "  border-collapse: collapse;",
-    "  font-size: 0.82rem;",
+    "  height: 100%;",
+    "  overflow: hidden;",
+    "  padding: 3rem 3.4rem 2.7rem;",
+    "  background: var(--sf-background);",
+    "  color: var(--sf-text);",
     "}",
     "",
-    ".slideforge-trace-table th,",
-    ".slideforge-trace-table td {",
-    "  border: 1px solid var(--slideforge-line);",
-    "  padding: 0.45rem 0.55rem;",
-    "  vertical-align: top;",
-    "}",
+    `.sf-slide::after { content: '${escapeCssContent(theme.footer)}'; position: absolute; right: 2rem; bottom: 1.2rem; color: var(--sf-muted); font-size: 0.65rem; font-weight: 700; }`,
     "",
-    ".slideforge-trace-table th {",
-    "  background: var(--slideforge-surface);",
-    "  color: var(--slideforge-ink);",
-    "}",
+    ".sf-header { display: grid; gap: 0.35rem; align-content: start; }",
+    ".sf-kicker { margin: 0; color: var(--sf-accent); font-size: 0.78rem; font-weight: 800; text-transform: uppercase; }",
+    ".sf-header h1, .sf-cover h1, .sf-section h1, .sf-quote h1 { margin: 0; color: var(--sf-text); font-size: 2.25rem; line-height: 1.12; letter-spacing: 0; }",
+    ".sf-lead, .sf-cover-subtitle { margin: 0; color: var(--sf-muted); font-size: 1.2rem; line-height: 1.45; }",
     "",
-    ".slideforge-note {",
-    "  margin-top: 1.25rem;",
-    "  border-left: 4px solid var(--slideforge-accent);",
-    "  color: var(--slideforge-muted);",
-    "  padding-left: 1rem;",
-    "}",
+    ".sf-standard { grid-template-rows: auto minmax(0, 1fr) auto; gap: 1.6rem; }",
+    ".sf-cover { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 2.4rem; align-items: center; background: linear-gradient(135deg, var(--sf-background), var(--sf-soft)); }",
+    ".sf-cover-copy { display: grid; gap: 0.8rem; align-content: center; }",
+    ".sf-cover h1 { font-size: 3.4rem; }",
+    ".sf-cover-image, .sf-image-frame img { max-width: 100%; max-height: 100%; object-fit: contain; border: 1px solid var(--sf-line); border-radius: 8px; }",
+    ".sf-section, .sf-quote { place-content: center; gap: 1rem; text-align: center; background: linear-gradient(135deg, var(--sf-background), var(--sf-soft)); }",
+    ".sf-section h1, .sf-quote h1 { font-size: 3rem; }",
+    ".sf-quote blockquote { max-width: 48rem; margin: 0; color: var(--sf-text); font-size: 2rem; line-height: 1.3; }",
     "",
-    ".slideforge-visual {",
-    "  margin: 1.25rem 0 0;",
-    "}",
+    ".sf-bullet-list { display: grid; gap: 0.9rem; margin: 0; padding: 0; list-style: none; font-size: 1.4rem; }",
+    ".sf-bullet-list li { display: grid; grid-template-columns: 0.8rem minmax(0, 1fr); gap: 0.85rem; align-items: start; color: var(--sf-muted); line-height: 1.4; }",
+    ".sf-bullet-list li::before { width: 0.55rem; height: 0.55rem; margin-top: 0.55rem; border-radius: 99px; background: var(--sf-accent); content: ''; }",
     "",
-    ".slideforge-visual img {",
-    "  display: block;",
-    "  max-width: 100%;",
-    "  max-height: 15rem;",
-    "  object-fit: contain;",
-    "  border: 1px solid var(--slideforge-line);",
-    "  border-radius: 8px;",
-    "  background: #fff;",
-    "}",
+    ".sf-two-column, .sf-image-text, .sf-system-grid, .sf-code-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.4rem; min-height: 0; }",
+    ".sf-panel, .sf-flow-panel, .sf-image-frame { min-height: 0; border: 1px solid var(--sf-line); border-radius: 8px; background: #fff; padding: 1.1rem; }",
+    ".sf-panel h2, .sf-flow-panel h2 { margin: 0 0 0.75rem; color: var(--sf-accent); font-size: 1.25rem; }",
+    ".sf-panel p, .sf-panel li { color: var(--sf-muted); font-size: 1rem; line-height: 1.45; }",
     "",
-    ".slideforge-visual figcaption {",
-    "  margin-top: 0.4rem;",
-    "  color: var(--slideforge-muted);",
-    "  font-size: 0.78rem;",
-    "}",
+    ".sf-image-frame { display: grid; place-items: center; gap: 0.5rem; }",
+    ".sf-image-frame figcaption { color: var(--sf-muted); font-size: 0.78rem; }",
     "",
-    ".slideforge-checklist {",
-    "  display: grid;",
-    "  gap: 0.9rem;",
-    "  margin-top: 2rem;",
-    "}",
+    ".sf-dashboard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; min-height: 0; }",
+    ".sf-progress-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.55rem; align-items: center; margin: 0.55rem 0; }",
+    ".sf-progress-row span { overflow: hidden; color: var(--sf-muted); text-overflow: ellipsis; white-space: nowrap; }",
+    ".sf-progress-row strong { color: var(--sf-accent); }",
+    ".sf-meter { grid-column: 1 / -1; height: 0.45rem; overflow: hidden; border-radius: 99px; background: var(--sf-soft); }",
+    ".sf-meter i { display: block; height: 100%; border-radius: inherit; background: var(--sf-accent); }",
+    ".sf-problem h2 { color: #b42318; }",
     "",
-    ".slideforge-checklist label {",
-    "  display: flex;",
-    "  gap: 0.75rem;",
-    "  align-items: center;",
-    "  color: var(--slideforge-ink);",
-    "}",
+    ".sf-flow-stack { display: grid; justify-items: center; gap: 0.45rem; }",
+    ".sf-flow-step { width: min(24rem, 100%); border: 1px solid var(--sf-line); border-radius: 8px; background: var(--sf-soft); padding: 0.65rem 0.9rem; text-align: center; font-weight: 700; }",
+    ".sf-flow-stack span { color: var(--sf-accent); font-weight: 900; }",
+    ".sf-note { margin: 0; border-left: 4px solid var(--sf-accent); padding-left: 1rem; color: var(--sf-muted); }",
     "",
-    ".slideforge-checklist input {",
-    "  width: 1.1rem;",
-    "  height: 1.1rem;",
-    "  accent-color: var(--slideforge-accent);",
-    "}",
+    ".sf-code-grid { grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); }",
+    ".sf-code-slide pre { overflow: auto; margin: 0; border: 1px solid var(--sf-line); border-radius: 8px; background: #111827; padding: 1rem; color: #f8fafc; font-size: 0.92rem; line-height: 1.45; }",
+    ".sf-checklist { display: grid; gap: 0.8rem; align-content: start; }",
+    ".sf-checklist label { display: grid; grid-template-columns: 2.2rem minmax(0, 1fr); gap: 0.8rem; align-items: center; border: 1px solid var(--sf-line); border-radius: 8px; padding: 0.8rem 1rem; }",
+    ".sf-checklist span { display: grid; width: 2rem; height: 2rem; place-items: center; border-radius: 99px; background: var(--sf-accent); color: #fff; font-weight: 800; }",
   ].join("\n");
 }
 
-function stringField(content: ContentObject, key: string): string {
-  const value = content[key];
+function stringField(source: Record<string, unknown>, key: string): string {
+  const value = source[key];
   return typeof value === "string" ? value : "";
 }
 
-function arrayField(content: ContentObject, key: string): unknown[] {
-  const value = content[key];
+function arrayField(source: Record<string, unknown>, key: string): unknown[] {
+  const value = source[key];
   return Array.isArray(value) ? value : [];
 }
 
-function stringArrayField(content: ContentObject, key: string): string[] {
-  return arrayField(content, key).filter((item): item is string => {
-    return typeof item === "string";
-  });
+function objectArrayField(source: Record<string, unknown>, key: string): Record<string, unknown>[] {
+  return arrayField(source, key).filter(
+    (value): value is Record<string, unknown> =>
+      typeof value === "object" && value !== null && !Array.isArray(value),
+  );
 }
 
-function objectArrayField(content: ContentObject, key: string): ContentObject[] {
-  return arrayField(content, key).filter((item): item is ContentObject => {
-    return typeof item === "object" && item !== null && !Array.isArray(item);
-  });
-}
-
-function quoteYaml(value: string): string {
-  return JSON.stringify(value);
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+function escapeCssContent(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }

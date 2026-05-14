@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
@@ -36,12 +37,30 @@ const SLIDE_TYPES = new Set([
   "note_callout",
   "closing",
 ]);
+const LAYOUT_IDS = new Set([
+  "title-cover",
+  "section-divider",
+  "bullet-list",
+  "two-column",
+  "image-left-text-right",
+  "progress-dashboard",
+  "system-flow",
+  "quote-callout",
+  "code-walkthrough",
+  "exercise-checklist",
+  "lab-progress",
+  "research-system-concept",
+]);
+const TEMPLATE_IDS = new Set(["teaching", "clean"]);
+const DEFAULT_TEMPLATE = "teaching";
+const DEFAULT_THEME = "lecture-light";
 
 let mainWindow = null;
 let mainWindowMode = "welcome";
 let activePreviewWindow = null;
 let lastActiveSlide = null;
 let activeTask = null;
+let slidevPreviewProcess = null;
 
 app.whenReady().then(() => {
   registerIpcHandlers();
@@ -124,6 +143,8 @@ function registerIpcHandlers() {
     load_task_folder: ({ path: taskPath }) => loadTaskFolder(taskPath),
     save_task_deck: ({ path: taskPath, deck }) => saveTaskDeck(taskPath, deck),
     generate_task_deck: ({ path: taskPath }) => generateTaskDeck(taskPath),
+    import_asset_files: ({ path: taskPath, filePaths }) => importAssetFiles(taskPath, filePaths),
+    preview_task_deck: ({ path: taskPath, deck }) => previewTaskDeck(taskPath, deck),
     build_task_deck: ({ path: taskPath, deck }) => buildTaskDeck(taskPath, deck),
   };
 
@@ -256,6 +277,7 @@ async function createProject(projectName) {
     path.join(projectDir, "outline.md"),
     `# ${name} 大纲\n\n1. 封面\n2. 课程目标\n3. 核心讲解\n4. 课堂练习\n5. 总结\n`,
   );
+  await writeDeckYaml(projectDir, defaultProjectDeck(name));
 
   const task = await loadTaskFolderInner(projectDir);
   await addProjectToVault(projectDir);
@@ -337,36 +359,9 @@ async function generateTaskDeck(taskPath) {
 
 async function buildTaskDeck(taskPath, deck) {
   const taskDir = await canonicalTaskDir(taskPath);
-  const validationErrors = validateDeckCandidate(deck);
-  if (validationErrors.length > 0) {
-    throw new Error(validationErrors.join("; "));
-  }
-  await writeDeckYaml(taskDir, deck);
-
   const workspaceRoot = findWorkspaceRoot();
-  const deckPath = path.join(taskDir, "deck.yaml");
-  const slidevDir = path.join(taskDir, "output", "slidev");
-  await fs.mkdir(slidevDir, { recursive: true });
-
-  const buildOutput = await runCommand(
-    "pnpm",
-    [
-      "exec",
-      "tsx",
-      "packages/compiler/src/cli.ts",
-      "build",
-      deckPath,
-      "--out",
-      slidevDir,
-    ],
-    workspaceRoot,
-  );
-  let log = commandOutputToLog(buildOutput);
-  if (buildOutput.code !== 0) {
-    throw new Error(`Deck build failed:\n${log}`);
-  }
-
-  await copyTaskAssets(taskDir, slidevDir);
+  const { slidevDir, log: buildLog } = await compileTaskDeck(taskDir, deck);
+  let log = buildLog;
 
   const warnings = [];
   const pdfPath = path.join(taskDir, "output", "slides.pdf");
@@ -401,6 +396,168 @@ async function buildTaskDeck(taskPath, deck) {
     warnings,
     log,
   };
+}
+
+async function previewTaskDeck(taskPath, deck) {
+  const taskDir = await canonicalTaskDir(taskPath);
+  const workspaceRoot = findWorkspaceRoot();
+  const { slidevDir, log } = await compileTaskDeck(taskDir, deck);
+  const slidesPath = path.join(slidevDir, "slides.md");
+  const port = await findAvailablePort(3030);
+  const url = `http://localhost:${port}/`;
+
+  if (slidevPreviewProcess && !slidevPreviewProcess.killed) {
+    slidevPreviewProcess.kill();
+  }
+
+  slidevPreviewProcess = spawn(
+    "pnpm",
+    ["exec", "slidev", slidesPath, "--host", "127.0.0.1", "--port", String(port)],
+    {
+      cwd: workspaceRoot,
+      env: process.env,
+      shell: false,
+      stdio: "ignore",
+    },
+  );
+  slidevPreviewProcess.on("close", () => {
+    slidevPreviewProcess = null;
+  });
+  await waitForHttp(url);
+
+  return {
+    slidevDir,
+    url,
+    warnings: [],
+    log,
+  };
+}
+
+function findAvailablePort(startPort) {
+  return new Promise((resolve) => {
+    const tryPort = (port) => {
+      const server = net.createServer();
+      server.unref();
+      server.on("error", () => tryPort(port + 1));
+      server.listen({ host: "127.0.0.1", port }, () => {
+        server.close(() => resolve(port));
+      });
+    };
+    tryPort(startPort);
+  });
+}
+
+async function waitForHttp(url) {
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url, { method: "HEAD" });
+      if (response.ok) {
+        return;
+      }
+    } catch {
+      // Wait for Slidev to finish booting.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+}
+
+async function compileTaskDeck(taskDir, deck) {
+  const validationErrors = validateDeckCandidate(deck);
+  if (validationErrors.length > 0) {
+    throw new Error(validationErrors.join("; "));
+  }
+  await writeDeckYaml(taskDir, deck);
+
+  const workspaceRoot = findWorkspaceRoot();
+  const deckPath = path.join(taskDir, "deck.yaml");
+  const slidevDir = path.join(taskDir, "output", "slidev");
+  await fs.mkdir(slidevDir, { recursive: true });
+
+  const buildOutput = await runCommand(
+    "pnpm",
+    [
+      "exec",
+      "tsx",
+      "packages/compiler/src/cli.ts",
+      "build",
+      deckPath,
+      "--out",
+      slidevDir,
+    ],
+    workspaceRoot,
+  );
+  const log = commandOutputToLog(buildOutput);
+  if (buildOutput.code !== 0) {
+    throw new Error(`Deck build failed:\n${log}`);
+  }
+
+  await copyTaskAssets(taskDir, slidevDir);
+  await linkSlidevRuntime(workspaceRoot, slidevDir);
+  return { slidevDir, log };
+}
+
+async function linkSlidevRuntime(workspaceRoot, slidevDir) {
+  const themeSource = path.join(workspaceRoot, "node_modules", "@slidev", "theme-seriph");
+  if (!fsSync.existsSync(themeSource)) {
+    return;
+  }
+  const themeTarget = path.join(slidevDir, "node_modules", "@slidev", "theme-seriph");
+  await fs.mkdir(path.dirname(themeTarget), { recursive: true });
+  await fs.rm(themeTarget, { recursive: true, force: true });
+  await fs.symlink(themeSource, themeTarget, "dir");
+}
+
+async function importAssetFiles(taskPath, filePaths) {
+  const taskDir = await canonicalTaskDir(taskPath);
+  let sourcePaths = Array.isArray(filePaths)
+    ? filePaths.map((filePath) => String(filePath)).filter(Boolean)
+    : [];
+
+  if (sourcePaths.length === 0) {
+    const result = await dialog.showOpenDialog(mainWindow ?? undefined, {
+      title: "Import Slideforge assets",
+      properties: ["openFile", "multiSelections"],
+      filters: [
+        {
+          name: "Supported assets",
+          extensions: [
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "svg",
+            "md",
+            "txt",
+            "ts",
+            "tsx",
+            "js",
+            "jsx",
+            "json",
+            "yaml",
+            "yml",
+          ],
+        },
+      ],
+    });
+    if (result.canceled) {
+      return loadTaskFolderInner(taskDir);
+    }
+    sourcePaths = result.filePaths;
+  }
+
+  const assetsDir = path.join(taskDir, "assets");
+  await fs.mkdir(assetsDir, { recursive: true });
+  for (const sourcePath of sourcePaths) {
+    const stat = await fs.stat(sourcePath).catch(() => null);
+    if (!stat?.isFile() || !assetKind(sourcePath)) {
+      continue;
+    }
+    const destination = await uniqueDestinationPath(assetsDir, path.basename(sourcePath));
+    await fs.copyFile(sourcePath, destination);
+  }
+
+  return loadTaskFolderInner(taskDir);
 }
 
 async function loadTaskFolderInner(taskPath) {
@@ -496,6 +653,36 @@ function sanitizeProjectFolderName(name) {
     .join("")
     .replace(/^-+|-+$/g, "");
   return sanitized || "slideforge-project";
+}
+
+function defaultProjectDeck(name) {
+  return {
+    meta: {
+      title: name,
+      language: "zh-CN",
+      theme: DEFAULT_THEME,
+      template: DEFAULT_TEMPLATE,
+    },
+    assets: [],
+    slides: [
+      {
+        id: "cover",
+        layout: "title-cover",
+        title: name,
+        props: {
+          subtitle: "从 deck.yaml 开始编辑这套演示稿。",
+        },
+      },
+      {
+        id: "overview",
+        layout: "bullet-list",
+        title: "本次内容",
+        props: {
+          points: ["背景和目标", "核心内容", "练习或行动项"],
+        },
+      },
+    ],
+  };
 }
 
 async function readOptionalText(filePath) {
@@ -659,6 +846,19 @@ async function writeDeckYaml(taskDir, deck) {
   await fs.writeFile(deckPath, output);
 }
 
+async function uniqueDestinationPath(dir, filename) {
+  const parsed = path.parse(filename);
+  const safeBase = sanitizeProjectFolderName(parsed.name) || "asset";
+  const extension = parsed.ext.toLowerCase();
+  let candidate = path.join(dir, `${safeBase}${extension}`);
+  let index = 2;
+  while (fsSync.existsSync(candidate)) {
+    candidate = path.join(dir, `${safeBase}-${index}${extension}`);
+    index += 1;
+  }
+  return candidate;
+}
+
 async function loadEnvConfig() {
   const root = findWorkspaceRoot();
   const envValues = await readEnvFile(path.join(root, ".env"));
@@ -749,21 +949,25 @@ function findWorkspaceRoot() {
 }
 
 function buildGenerationPrompt(task) {
-  return `You are Slideforge's teaching deck planner.
+  const template = TEMPLATE_IDS.has(task.deck?.meta?.template)
+    ? task.deck.meta.template
+    : DEFAULT_TEMPLATE;
+  const theme = template === "clean" ? "clean-light" : DEFAULT_THEME;
+  return `You are Slideforge's deck planner.
 
-Return only JSON. Generate a complete Slideforge Deck Spec for the built-in "teaching" template.
+Return only JSON. Generate a complete Slideforge Deck Spec for the built-in "${template}" template.
 
 Hard rules:
 - Do not generate Slidev Markdown.
 - Use this exact top-level shape: meta, assets, slides.
 - meta must include title, language, theme, template.
-- meta.template must be "teaching"; meta.theme should be "teaching"; language should default to zh-CN.
-- slides must use only these types: ${[...SLIDE_TYPES].join(", ")}.
-- Each slide needs id, type, title, content, and optional speakerNotes, animation, visual.
-- If a slide uses visual, visual.assetId must refer to an image asset id in the assets list.
+- meta.template must be "${template}"; meta.theme should be "${theme}"; language should default to zh-CN.
+- slides must use only these layouts: ${[...LAYOUT_IDS].join(", ")}.
+- Each slide needs id, layout, title, props, and optional speakerNotes.
+- Put image references in props.image as a relative path such as assets/graph.png.
 - Use only explicitly referenced assets. Do not invent asset paths.
 - Text assets may inform content. Image assets may be referenced visually but should not be described as if you can see them.
-- Generate a practical teaching PPT draft, not marketing copy.
+- Generate a practical presentation draft, not marketing copy.
 
 Available assets:
 ${JSON.stringify(task.assets, null, 2)}
@@ -891,8 +1095,8 @@ function validateDeckCandidate(deck) {
       errors.push(`meta.${field} is required.`);
     }
   }
-  if ((meta.template ?? "teaching") !== "teaching") {
-    errors.push("meta.template must be teaching.");
+  if (!TEMPLATE_IDS.has(meta.template ?? DEFAULT_TEMPLATE)) {
+    errors.push("meta.template must be teaching or clean.");
   }
 
   const assetIds = new Set(
@@ -916,15 +1120,26 @@ function validateDeckCandidate(deck) {
       errors.push(`${label} must be an object.`);
       return;
     }
-    for (const field of ["id", "type", "title"]) {
+    for (const field of ["id", "title"]) {
       if (typeof slide[field] !== "string" || !slide[field].trim()) {
         errors.push(`${label}.${field} is required.`);
       }
     }
-    if (!SLIDE_TYPES.has(slide.type)) {
+    const hasLayout = typeof slide.layout === "string";
+    const hasLegacyType = typeof slide.type === "string";
+    if (!hasLayout && !hasLegacyType) {
+      errors.push(`${label}.layout is required.`);
+    }
+    if (hasLayout && !LAYOUT_IDS.has(slide.layout)) {
+      errors.push(`${label}.layout is not supported.`);
+    }
+    if (hasLegacyType && !SLIDE_TYPES.has(slide.type)) {
       errors.push(`${label}.type is not supported.`);
     }
-    if (!slide.content || typeof slide.content !== "object" || Array.isArray(slide.content)) {
+    if (hasLayout && (!slide.props || typeof slide.props !== "object" || Array.isArray(slide.props))) {
+      errors.push(`${label}.props must be an object.`);
+    }
+    if (hasLegacyType && (!slide.content || typeof slide.content !== "object" || Array.isArray(slide.content))) {
       errors.push(`${label}.content must be an object.`);
     }
     if (slide.visual && typeof slide.visual === "object" && !Array.isArray(slide.visual)) {

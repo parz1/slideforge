@@ -98,4 +98,72 @@ export const teachingTemplate: SlideTemplateDefinition[] = [
   },
 ];
 
-export const builtinTemplates = teachingTemplate;
+export const cleanTemplate: SlideTemplateDefinition[] = [
+  {
+    type: "cover",
+    purpose: "通用封面页，展示标题和副标题。",
+    slots: ["title", "content", "visual", "speakerNotes"],
+    constraints: {
+      titleMaxChars: 44,
+      visualAllowed: true,
+      supportedAnimations: ["none"],
+    },
+  },
+  {
+    type: "section",
+    purpose: "章节页或分隔页。",
+    slots: ["title", "speakerNotes"],
+    constraints: {
+      titleMaxChars: 32,
+      visualAllowed: false,
+      supportedAnimations: ["none"],
+    },
+  },
+  {
+    type: "bullet_summary",
+    purpose: "通用要点页，适合 3-6 条短句。",
+    slots: ["title", "content", "visual", "speakerNotes"],
+    constraints: {
+      titleMaxChars: 36,
+      maxItems: 6,
+      visualAllowed: true,
+      supportedAnimations: ["none", "step_reveal"],
+    },
+  },
+  {
+    type: "two_column",
+    purpose: "双栏信息页，用于对比、拆解或并列说明。",
+    slots: ["title", "content", "visual", "speakerNotes"],
+    constraints: {
+      titleMaxChars: 36,
+      maxItems: 8,
+      visualAllowed: true,
+      supportedAnimations: ["none"],
+    },
+  },
+  {
+    type: "note_callout",
+    purpose: "强调一句关键结论或注意事项。",
+    slots: ["title", "content", "speakerNotes"],
+    constraints: {
+      titleMaxChars: 36,
+      visualAllowed: false,
+      supportedAnimations: ["none"],
+    },
+  },
+  {
+    type: "closing",
+    purpose: "结束页，收束核心信息。",
+    slots: ["title", "content", "speakerNotes"],
+    constraints: {
+      titleMaxChars: 36,
+      visualAllowed: false,
+      supportedAnimations: ["none"],
+    },
+  },
+];
+
+export const builtinTemplates = {
+  teaching: teachingTemplate,
+  clean: cleanTemplate,
+};

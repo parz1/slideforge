@@ -21,10 +21,22 @@ export interface DeckSpec {
     title: string;
     language: string;
     theme: string;
-    template?: "teaching";
+    template?: "teaching" | "clean";
   };
+  theme?: ThemeTokens;
   assets?: DeckAsset[];
   slides: DeckSlide[];
+}
+
+export interface ThemeTokens {
+  id?: string;
+  accent?: string;
+  background?: string;
+  text?: string;
+  muted?: string;
+  logo?: string;
+  footer?: string;
+  fontFamily?: string;
 }
 
 export interface DeckAsset {
@@ -42,14 +54,43 @@ export interface VisualRef {
 
 export interface DeckSlide {
   id: string;
-  type: SlideType;
+  layout?: LayoutId | string;
+  props?: Record<string, unknown>;
+  type?: SlideType;
   title: string;
-  content: Record<string, unknown>;
+  content?: Record<string, unknown>;
   visual?: VisualRef;
   speakerNotes?: string;
   animation?: {
     preset?: AnimationPreset;
   };
+}
+
+export type LayoutCategory = "basic" | "teaching" | "research" | "lab";
+
+export type LayoutId =
+  | "title-cover"
+  | "section-divider"
+  | "bullet-list"
+  | "two-column"
+  | "image-left-text-right"
+  | "progress-dashboard"
+  | "system-flow"
+  | "quote-callout"
+  | "code-walkthrough"
+  | "exercise-checklist"
+  | "lab-progress"
+  | "research-system-concept";
+
+export interface LayoutDefinition {
+  id: LayoutId;
+  name: string;
+  category: LayoutCategory;
+  description: string;
+  propsSchema: Record<string, unknown>;
+  defaultProps: Record<string, unknown>;
+  vueFile: string;
+  vueSource: string;
 }
 
 export interface ValidationResult {

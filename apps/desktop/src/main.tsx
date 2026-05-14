@@ -3,15 +3,20 @@ import ReactDOM, { type Root } from "react-dom/client";
 import yaml from "js-yaml";
 import {
   BadgeCheckIcon,
+  ClipboardPlusIcon,
+  CopyIcon,
+  DownloadIcon,
   EyeIcon,
   FileTextIcon,
+  FilePlus2Icon,
   FolderOpenIcon,
-  HammerIcon,
   ImageIcon,
   PanelsTopLeftIcon,
   PresentationIcon,
   RefreshCwIcon,
   SaveIcon,
+  Trash2Icon,
+  UploadIcon,
   WandSparklesIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +31,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label as FieldLabel } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import "./styles.css";
@@ -64,15 +76,44 @@ type SlideType =
   | "note_callout"
   | "closing";
 
+type TemplateId = "teaching" | "clean";
+type ThemeId = "lecture-light" | "clean-light";
+type LayoutCategory = "basic" | "teaching" | "research" | "lab";
+type LayoutId =
+  | "title-cover"
+  | "section-divider"
+  | "bullet-list"
+  | "two-column"
+  | "image-left-text-right"
+  | "progress-dashboard"
+  | "system-flow"
+  | "quote-callout"
+  | "code-walkthrough"
+  | "exercise-checklist"
+  | "lab-progress"
+  | "research-system-concept";
+
 interface DeckSpec {
   meta: {
     title: string;
     language: string;
     theme: string;
-    template?: "teaching";
+    template?: TemplateId;
   };
+  theme?: ThemeTokens;
   assets?: DeckAsset[];
   slides: DeckSlide[];
+}
+
+interface ThemeTokens {
+  id?: string;
+  accent?: string;
+  background?: string;
+  text?: string;
+  muted?: string;
+  logo?: string;
+  footer?: string;
+  fontFamily?: string;
 }
 
 interface DeckAsset {
@@ -90,14 +131,24 @@ interface VisualRef {
 
 interface DeckSlide {
   id: string;
-  type: SlideType;
+  layout?: LayoutId | string;
+  props?: Record<string, unknown>;
+  type?: SlideType;
   title: string;
-  content: Record<string, unknown>;
+  content?: Record<string, unknown>;
   visual?: VisualRef;
   speakerNotes?: string;
   animation?: {
     preset?: "none" | "step_reveal" | "highlight_key_points";
   };
+}
+
+interface LayoutDefinition {
+  id: LayoutId;
+  name: string;
+  category: LayoutCategory;
+  description: string;
+  defaultProps: Record<string, unknown>;
 }
 
 interface ReferencedAssetContent {
@@ -135,6 +186,7 @@ interface GenerateDeckResult {
 interface BuildDeckResult {
   slidevDir: string;
   pdfPath?: string | null;
+  url?: string;
   warnings: string[];
   log: string;
 }
@@ -167,19 +219,178 @@ const slideTypes: SlideType[] = [
   "closing",
 ];
 
+const layoutDefinitions: LayoutDefinition[] = [
+  {
+    id: "title-cover",
+    name: "Title Cover",
+    category: "basic",
+    description: "Title, subtitle, optional hero image.",
+    defaultProps: { subtitle: "Subtitle", kicker: "" },
+  },
+  {
+    id: "section-divider",
+    name: "Section Divider",
+    category: "basic",
+    description: "Large section title and lead.",
+    defaultProps: { lead: "Short section lead" },
+  },
+  {
+    id: "bullet-list",
+    name: "Bullet List",
+    category: "basic",
+    description: "3-6 concise points.",
+    defaultProps: { points: ["First point", "Second point", "Third point"] },
+  },
+  {
+    id: "two-column",
+    name: "Two Column",
+    category: "basic",
+    description: "Two panels for comparison or decomposition.",
+    defaultProps: {
+      columns: [
+        { title: "Left", items: ["Item one", "Item two"] },
+        { title: "Right", items: ["Item one", "Item two"] },
+      ],
+    },
+  },
+  {
+    id: "image-left-text-right",
+    name: "Image + Text",
+    category: "basic",
+    description: "Visual on the left, explanation on the right.",
+    defaultProps: { image: "", alt: "", points: ["Observation", "Meaning", "Next step"] },
+  },
+  {
+    id: "progress-dashboard",
+    name: "Progress Dashboard",
+    category: "research",
+    description: "Done, doing, next plan, and problems.",
+    defaultProps: {
+      done: [{ label: "Literature review", value: 100 }],
+      doing: [{ label: "Prototype", value: 60 }],
+      nextPlan: ["Refine system diagram"],
+      problem: ["Data collection method"],
+    },
+  },
+  {
+    id: "system-flow",
+    name: "System Flow",
+    category: "research",
+    description: "Pipeline with side signals or notes.",
+    defaultProps: {
+      subtitle: "System concept",
+      steps: ["User", "Interaction", "Data capture", "Analysis", "Output"],
+      sideTitle: "Signals",
+      sideItems: ["Voice", "Expression", "Behavior"],
+      note: "Use natural interaction to reduce collection burden.",
+    },
+  },
+  {
+    id: "quote-callout",
+    name: "Quote Callout",
+    category: "basic",
+    description: "One statement with optional source.",
+    defaultProps: { quote: "The key message goes here.", source: "" },
+  },
+  {
+    id: "code-walkthrough",
+    name: "Code Walkthrough",
+    category: "teaching",
+    description: "Code with explanatory notes.",
+    defaultProps: { language: "ts", code: "const value = 42", points: ["Explain the key line"] },
+  },
+  {
+    id: "exercise-checklist",
+    name: "Exercise Checklist",
+    category: "teaching",
+    description: "Classroom tasks or practice checklist.",
+    defaultProps: { items: ["Task one", "Task two", "Task three"] },
+  },
+  {
+    id: "lab-progress",
+    name: "Lab Progress",
+    category: "lab",
+    description: "Group meeting progress dashboard.",
+    defaultProps: {
+      personName: "Name",
+      researchTitle: "Research title",
+      done: [{ label: "Related work", value: 100 }],
+      doing: [{ label: "System concept", value: 70 }],
+      nextPlan: ["Prototype plan"],
+      problem: ["Natural data collection"],
+    },
+  },
+  {
+    id: "research-system-concept",
+    name: "Research System Concept",
+    category: "lab",
+    description: "Research system concept flow.",
+    defaultProps: {
+      subtitle: "System concept",
+      steps: ["Participant", "Interaction", "Multimodal capture", "Analysis", "Visualization"],
+      sideTitle: "Available information",
+      sideItems: ["Voice", "Expression", "Reaction speed", "Logs"],
+      note: "A concept slide for discussion.",
+    },
+  },
+];
+
+const templatePresets: Array<{
+  id: TemplateId;
+  label: string;
+  theme: ThemeId;
+  layouts: LayoutId[];
+}> = [
+  {
+    id: "teaching",
+    label: "Teaching",
+    theme: "lecture-light",
+    layouts: [
+      "title-cover",
+      "section-divider",
+      "bullet-list",
+      "two-column",
+      "image-left-text-right",
+      "code-walkthrough",
+      "exercise-checklist",
+      "quote-callout",
+    ],
+  },
+  {
+    id: "clean",
+    label: "Clean",
+    theme: "clean-light",
+    layouts: [
+      "title-cover",
+      "section-divider",
+      "bullet-list",
+      "two-column",
+      "image-left-text-right",
+      "progress-dashboard",
+      "system-flow",
+      "quote-callout",
+    ],
+  },
+];
+
+const themeOptions: Array<{ id: ThemeId; label: string; template: TemplateId }> = [
+  { id: "lecture-light", label: "Lecture Light", template: "teaching" },
+  { id: "clean-light", label: "Clean Light", template: "clean" },
+];
+
 const initialDeck: DeckSpec = {
   meta: {
     title: "Graph DFS and Postfix Notation",
     language: "zh-CN",
-    theme: "teaching",
+    theme: "lecture-light",
     template: "teaching",
   },
   slides: [
     {
       id: "cover",
-      type: "cover",
+      layout: "title-cover",
       title: "图的深度优先探索与后缀记法",
-      content: {
+      props: {
         subtitle: "面向试讲的解题课设计",
       },
       speakerNotes:
@@ -187,34 +398,30 @@ const initialDeck: DeckSpec = {
     },
     {
       id: "goals",
-      type: "metric_grid",
+      layout: "bullet-list",
       title: "这节课要解决什么",
-      content: {
-        metrics: [
-          { label: "题型 1", value: "DFS", note: "读 Python 递归程序" },
-          { label: "题型 2", value: "Stack", note: "后缀记法求值" },
-          { label: "核心能力", value: "Trace", note: "手动追踪状态变化" },
+      props: {
+        points: [
+          "题型 1 - DFS - 读 Python 递归程序",
+          "题型 2 - Stack - 后缀记法求值",
+          "核心能力 - Trace - 手动追踪状态变化",
         ],
       },
     },
     {
       id: "lesson-thread",
-      type: "principle_card",
+      layout: "quote-callout",
       title: "讲课主线",
-      content: {
-        cards: [
-          {
-            title: "会追踪状态，就能读懂程序",
-            body: "把每一步的状态写出来：当前顶点、visited、forest、栈。",
-          },
-        ],
+      props: {
+        quote: "会追踪状态，就能读懂程序",
+        source: "把每一步的状态写出来：当前顶点、visited、forest、栈。",
       },
     },
     {
       id: "problem-breakdown",
-      type: "two_column",
+      layout: "two-column",
       title: "题目拆解",
-      content: {
+      props: {
         columns: [
           {
             title: "图搜索",
@@ -229,9 +436,9 @@ const initialDeck: DeckSpec = {
     },
     {
       id: "graph-structure",
-      type: "code_explain",
+      layout: "code-walkthrough",
       title: "DFS：先看数据结构",
-      content: {
+      props: {
         language: "python",
         code: `graph = {
     "A": {"B", "D"},
@@ -244,21 +451,22 @@ const initialDeck: DeckSpec = {
     },
     {
       id: "forest-trace",
-      type: "trace_table",
+      layout: "system-flow",
       title: "手动追踪 forest",
-      content: {
-        columns: ["Step", "Outer loop", "Action", "forest"],
-        rows: [
-          ["1", "n = A", "call DFS", "[{A,B,C,D,E,F}]"],
-          ["2", "n = G", "call DFS", "[{A,B,C,D,E,F}, {G,H}]"],
+      props: {
+        steps: [
+          "n = A / call DFS / forest = [{A,B,C,D,E,F}]",
+          "n = G / call DFS / forest = [{A,B,C,D,E,F}, {G,H}]",
         ],
+        sideTitle: "Trace focus",
+        sideItems: ["Outer loop", "Action", "forest"],
       },
     },
     {
       id: "practice",
-      type: "checklist",
+      layout: "exercise-checklist",
       title: "课堂练习",
-      content: {
+      props: {
         items: [
           "给一张小图，手动写出 DFS visited 顺序",
           "把递归 DFS 改写成显式栈版本",
@@ -288,8 +496,13 @@ function DeckWorkbench() {
   const [isBusy, setIsBusy] = useState(false);
   const [vaultProjects, setVaultProjects] = useState<VaultProject[]>([]);
   const [newProjectName, setNewProjectName] = useState("");
+  const [layoutToAdd, setLayoutToAdd] = useState<LayoutId>("bullet-list");
   const previewWindow = useRef<Window | null>(null);
 
+  const currentTemplate = deck.meta.template ?? "teaching";
+  const currentPreset =
+    templatePresets.find((preset) => preset.id === currentTemplate) ?? templatePresets[0];
+  const templateLayouts = currentPreset.layouts;
   const selectedIndex = Math.max(
     0,
     deck.slides.findIndex((slide) => slide.id === selectedSlideId),
@@ -425,12 +638,16 @@ function DeckWorkbench() {
     });
   }
 
-  async function generateDeck() {
+  async function draftDeckWithAi() {
     if (!task) {
-      setTaskError("Open a task folder before generating.");
+      setTaskError("Open a task folder before drafting with AI.");
       return;
     }
-    await runTaskAction("Generate deck", async () => {
+    if (!task.envStatus.hasKey || !task.envStatus.hasModel) {
+      setTaskError(`AI unavailable: ${task.envStatus.message}`);
+      return;
+    }
+    await runTaskAction("Draft with AI", async () => {
       const result = await invokeDesktop<GenerateDeckResult>("generate_task_deck", {
         path: task.path,
       });
@@ -446,30 +663,182 @@ function DeckWorkbench() {
       );
       setTaskStatus(
         result.repaired
-          ? "Generated deck after one repair pass. Review before saving."
-          : "Generated deck. Review before saving.",
+          ? "AI draft completed after one repair pass. Review before saving."
+          : "AI draft completed. Review before saving.",
       );
     });
   }
 
-  async function buildDeck() {
+  async function previewDeck() {
     if (!task) {
-      setTaskError("Open a task folder before building output.");
+      setTaskError("Open a task folder before previewing the deck.");
       return;
     }
     if (deckYamlError) {
-      setTaskError("Fix deck.yaml before building output.");
+      setTaskError("Fix deck.yaml before previewing the deck.");
       return;
     }
-    await runTaskAction("Build deck", async () => {
+    await runTaskAction("Preview deck", async () => {
+      const result = await invokeDesktop<BuildDeckResult>("preview_task_deck", {
+        path: task.path,
+        deck,
+      });
+      setTaskStatus(`Preview deck at ${result.url ?? "http://localhost:3030/"}.`);
+      window.open(result.url ?? "http://localhost:3030/", "_blank");
+    });
+  }
+
+  async function exportPdf() {
+    if (!task) {
+      setTaskError("Open a task folder before exporting PDF.");
+      return;
+    }
+    if (deckYamlError) {
+      setTaskError("Fix deck.yaml before exporting PDF.");
+      return;
+    }
+    await runTaskAction("Export PDF", async () => {
       const result = await invokeDesktop<BuildDeckResult>("build_task_deck", {
         path: task.path,
         deck,
       });
       const pdf = result.pdfPath ? ` PDF: ${result.pdfPath}` : "";
       const warning = result.warnings.length > 0 ? ` ${result.warnings[0]}` : "";
-      setTaskStatus(`Built Slidev: ${result.slidevDir}.${pdf}${warning}`);
+      setTaskStatus(`Exported Slidev project: ${result.slidevDir}.${pdf}${warning}`);
     });
+  }
+
+  async function importAssets(filePaths?: string[]) {
+    if (!task) {
+      setTaskError("Open a project before importing assets.");
+      return;
+    }
+    await runTaskAction("Import assets", async () => {
+      const payload = await invokeDesktop<TaskFolderPayload>("import_asset_files", {
+        path: task.path,
+        filePaths,
+      });
+      applyTaskPayload(payload);
+      setTaskStatus(`Imported assets. ${payload.assets.length} asset(s) in project.`);
+    });
+  }
+
+  function handleAssetDrop(event: React.DragEvent) {
+    event.preventDefault();
+    const filePaths = Array.from(event.dataTransfer.files)
+      .map((file) => (file as File & { path?: string }).path)
+      .filter((filePath): filePath is string => Boolean(filePath));
+    if (filePaths.length === 0) {
+      setTaskError("This drop did not include local file paths. Use Import Assets instead.");
+      return;
+    }
+    void importAssets(filePaths);
+  }
+
+  function addSlide() {
+    const nextSlide = createDefaultSlide(layoutToAdd, deck);
+    applyDeck(
+      {
+        ...deck,
+        slides: [...deck.slides, nextSlide],
+      },
+      true,
+      nextSlide.id,
+    );
+    setTaskStatus(`Added ${nextSlide.type} slide.`);
+  }
+
+  function duplicateSlide() {
+    if (!selectedSlide) {
+      return;
+    }
+    const duplicate = {
+      ...structuredClone(selectedSlide),
+      id: uniqueSlideId(`${selectedSlide.id}-copy`, deck),
+      title: `${selectedSlide.title} Copy`,
+    };
+    const slides = [...deck.slides];
+    slides.splice(selectedIndex + 1, 0, duplicate);
+    applyDeck({ ...deck, slides }, true, duplicate.id);
+    setTaskStatus("Duplicated current slide.");
+  }
+
+  function deleteSlide() {
+    if (!selectedSlide) {
+      return;
+    }
+    if (deck.slides.length <= 1) {
+      setTaskError("A deck must keep at least one slide.");
+      return;
+    }
+    const slides = deck.slides.filter((slide) => slide.id !== selectedSlide.id);
+    const nextSelected = slides[Math.min(selectedIndex, slides.length - 1)]?.id ?? "";
+    applyDeck({ ...deck, slides }, true, nextSelected);
+    setTaskStatus("Deleted current slide.");
+  }
+
+  function updateTemplate(template: TemplateId) {
+    const preset = templatePresets.find((item) => item.id === template) ?? templatePresets[0];
+    applyDeck(
+      {
+        ...deck,
+        meta: {
+          ...deck.meta,
+          template,
+          theme: preset.theme,
+        },
+      },
+      true,
+      selectedSlideId,
+    );
+    setLayoutToAdd(preset.layouts.includes(layoutToAdd) ? layoutToAdd : preset.layouts[0]);
+    setTaskStatus(`Selected ${preset.label} template.`);
+  }
+
+  function updateTheme(theme: ThemeId) {
+    const option = themeOptions.find((item) => item.id === theme);
+    applyDeck(
+      {
+        ...deck,
+        meta: {
+          ...deck.meta,
+          theme,
+          template: option?.template ?? deck.meta.template ?? "teaching",
+        },
+      },
+      true,
+      selectedSlideId,
+    );
+    setTaskStatus(`Selected ${theme}.`);
+  }
+
+  function attachVisualAsset(asset: DeckAsset) {
+    if (!selectedSlide || asset.kind !== "image") {
+      return;
+    }
+    const slides = deck.slides.map((slide) =>
+      slide.id === selectedSlide.id
+        ? {
+            ...slide,
+            props: {
+              ...slideProps(slide),
+              image: asset.path,
+              alt: asset.description || asset.path,
+            },
+          }
+        : slide,
+    );
+    applyDeck({ ...deck, slides }, true, selectedSlide.id);
+    setTaskStatus(`Attached ${asset.path} to current slide.`);
+  }
+
+  async function copyAssetReference(asset: DeckAsset) {
+    const snippet =
+      asset.kind === "image"
+        ? `image: ${asset.path}\nalt: ${asset.description || asset.path}`
+        : `@${asset.path}`;
+    await navigator.clipboard?.writeText(snippet).catch(() => undefined);
+    setTaskStatus(`Copied reference for ${asset.path}.`);
   }
 
   async function runTaskAction(label: string, action: () => Promise<void>) {
@@ -494,9 +863,9 @@ function DeckWorkbench() {
     applyDeck(nextDeck, true);
   }
 
-  function applyDeck(nextDeck: DeckSpec, syncYaml: boolean) {
+  function applyDeck(nextDeck: DeckSpec, syncYaml: boolean, selectedId?: string) {
     setDeck(nextDeck);
-    setSelectedSlideId(nextDeck.slides[0]?.id ?? "");
+    setSelectedSlideId(selectedId ?? nextDeck.slides[0]?.id ?? "");
     setDeckYamlError("");
     if (syncYaml) {
       setDeckYamlText(deckToYaml(nextDeck));
@@ -544,6 +913,8 @@ function DeckWorkbench() {
   function returnToWelcome() {
     setTask(null);
     setDeck(initialDeck);
+    setDeckYamlText(deckToYaml(initialDeck));
+    setDeckYamlError("");
     setSelectedSlideId(initialDeck.slides[0]?.id ?? "");
     setTaskError("");
     setTaskStatus("No project opened.");
@@ -577,7 +948,7 @@ function DeckWorkbench() {
         <div className="topbar-actions" aria-label="Deck actions">
           <Button type="button" onClick={openActivePreview} variant="secondary">
             <PanelsTopLeftIcon />
-            Active Preview
+            Open Slide Preview
           </Button>
           <Button
             type="button"
@@ -591,15 +962,11 @@ function DeckWorkbench() {
             }
           >
             <BadgeCheckIcon />
-            Validate
+            Check YAML
           </Button>
-          <Button type="button" variant="outline" onClick={buildDeck} disabled={isBusy}>
-            <HammerIcon />
-            Build
-          </Button>
-          <Button type="button" onClick={() => window.open("http://localhost:3030/", "_blank")}>
-            <PresentationIcon />
-            Preview
+          <Button type="button" variant="outline" onClick={saveDeck} disabled={isBusy || !task}>
+            <SaveIcon />
+            Save deck.yaml
           </Button>
         </div>
       </header>
@@ -614,6 +981,10 @@ function DeckWorkbench() {
             <TabsTrigger value="slides">
               <PresentationIcon />
               Slides
+            </TabsTrigger>
+            <TabsTrigger value="export">
+              <DownloadIcon />
+              Export
             </TabsTrigger>
           </TabsList>
           <p className={taskError ? "task-status warn" : "task-status"}>
@@ -646,11 +1017,51 @@ function DeckWorkbench() {
                   <SaveIcon />
                   Save deck.yaml
                 </Button>
-                <Button type="button" onClick={generateDeck} disabled={isBusy || !task}>
+                <Button
+                  type="button"
+                  onClick={draftDeckWithAi}
+                  disabled={isBusy || !task || !task.envStatus.hasKey || !task.envStatus.hasModel}
+                  variant={task.envStatus.hasKey && task.envStatus.hasModel ? "default" : "secondary"}
+                >
                   <WandSparklesIcon />
-                  Generate
+                  Draft with AI
                 </Button>
               </div>
+            </div>
+            <div className="template-strip" aria-label="Template settings">
+              <div>
+                <FieldLabel>Template</FieldLabel>
+                <Select value={currentTemplate} onValueChange={(value) => updateTemplate(value as TemplateId)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templatePresets.map((preset) => (
+                      <SelectItem key={preset.id} value={preset.id}>
+                        {preset.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <FieldLabel>Theme</FieldLabel>
+                <Select value={deck.meta.theme} onValueChange={(value) => updateTheme(value as ThemeId)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {themeOptions.map((theme) => (
+                      <SelectItem key={theme.id} value={theme.id}>
+                        {theme.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p>
+                {deck.slides.length} slides · {deck.assets?.length ?? 0} assets
+              </p>
             </div>
             <div className="task-grid">
               <TaskMetric icon={<FileTextIcon />} label="Brief" value={`${wordCount(task.brief)} chars`} />
@@ -692,13 +1103,23 @@ function DeckWorkbench() {
               </ScrollArea>
             </Card>
 
-            <Card className="project-document assets-document">
+            <Card
+              className="project-document assets-document"
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={handleAssetDrop}
+            >
               <CardHeader className="pane-heading">
                 <div>
                   <CardTitle>Assets</CardTitle>
-                  <CardDescription>assets/ and referenced files</CardDescription>
+                  <CardDescription>Drop files here or import into assets/</CardDescription>
                 </div>
-                <Badge variant="outline">{task.assets.length} files</Badge>
+                <div className="pane-heading-actions">
+                  <Badge variant="outline">{task.assets.length} files</Badge>
+                  <Button type="button" variant="outline" onClick={() => void importAssets()} disabled={isBusy}>
+                    <UploadIcon />
+                    Import Assets
+                  </Button>
+                </div>
               </CardHeader>
               <ScrollArea className="project-document-body">
                 <div className="asset-list">
@@ -707,6 +1128,20 @@ function DeckWorkbench() {
                     <div key={asset.id}>
                       <strong>{asset.path}</strong>
                       <span>{asset.kind}</span>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => void copyAssetReference(asset)}
+                      >
+                        <CopyIcon />
+                        Copy Ref
+                      </Button>
+                      {asset.kind === "image" ? (
+                        <Button type="button" variant="outline" onClick={() => attachVisualAsset(asset)}>
+                          <ClipboardPlusIcon />
+                          Use on Slide
+                        </Button>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -743,6 +1178,32 @@ function DeckWorkbench() {
                   </CardDescription>
                 </div>
               </CardHeader>
+              <div className="slide-actions">
+                <Select value={layoutToAdd} onValueChange={(value) => setLayoutToAdd(value as LayoutId)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templateLayouts.map((layoutId) => (
+                      <SelectItem key={layoutId} value={layoutId}>
+                        {layoutLabel(layoutId)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button type="button" variant="outline" onClick={addSlide}>
+                  <FilePlus2Icon />
+                  Add Slide
+                </Button>
+                <Button type="button" variant="outline" onClick={duplicateSlide} disabled={!selectedSlide}>
+                  <CopyIcon />
+                  Duplicate
+                </Button>
+                <Button type="button" variant="outline" onClick={deleteSlide} disabled={deck.slides.length <= 1}>
+                  <Trash2Icon />
+                  Delete
+                </Button>
+              </div>
               <CardContent className="pane-content">
                 <ScrollArea className="slide-scroll">
                   <nav className="slide-list" aria-label="Slides">
@@ -757,7 +1218,7 @@ function DeckWorkbench() {
                           {String(index + 1).padStart(2, "0")}
                         </span>
                         <strong>{slide.title}</strong>
-                        <Badge variant="outline">{slide.type}</Badge>
+                        <Badge variant="outline">{slideLayoutId(slide)}</Badge>
                       </button>
                     ))}
                   </nav>
@@ -811,7 +1272,7 @@ function DeckWorkbench() {
                   <TabsTrigger value="spec">Spec</TabsTrigger>
                 </TabsList>
                 <TabsContent value="preview">
-                  <SlidePreview assets={deck.assets ?? []} slide={selectedSlide} />
+                  <SlidePreview assets={deck.assets ?? []} projectPath={task.path} slide={selectedSlide} />
                 </TabsContent>
                 <TabsContent value="checks">
                   <section className="issues">
@@ -842,6 +1303,58 @@ function DeckWorkbench() {
                   </section>
                 </TabsContent>
               </Tabs>
+            </Card>
+          </section>
+        </TabsContent>
+
+        <TabsContent value="export" className="workbench-tab export-page">
+          <section className="export-grid" aria-label="Deck export">
+            <Card className="export-panel">
+              <CardHeader className="pane-heading">
+                <div>
+                  <CardTitle>Preview Deck</CardTitle>
+                  <CardDescription>Full Slidev renderer</CardDescription>
+                </div>
+                <Badge variant={deckYamlError ? "destructive" : "secondary"}>
+                  {deckYamlError ? "fix YAML first" : "ready"}
+                </Badge>
+              </CardHeader>
+              <CardContent className="export-actions">
+                <Button type="button" onClick={previewDeck} disabled={isBusy || Boolean(deckYamlError)}>
+                  <PresentationIcon />
+                  Preview Deck
+                </Button>
+                <p>{task.path}/output/slidev</p>
+              </CardContent>
+            </Card>
+
+            <Card className="export-panel">
+              <CardHeader className="pane-heading">
+                <div>
+                  <CardTitle>Export PDF</CardTitle>
+                  <CardDescription>output/slides.pdf</CardDescription>
+                </div>
+                <Badge variant="outline">output/</Badge>
+              </CardHeader>
+              <CardContent className="export-actions">
+                <Button type="button" variant="outline" onClick={exportPdf} disabled={isBusy || Boolean(deckYamlError)}>
+                  <DownloadIcon />
+                  Export PDF
+                </Button>
+                <p>{task.path}/output/slides.pdf</p>
+              </CardContent>
+            </Card>
+
+            <Card className="export-panel export-status">
+              <CardHeader className="pane-heading">
+                <div>
+                  <CardTitle>Build Status</CardTitle>
+                  <CardDescription>{task.name}</CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent className="export-actions">
+                <pre>{taskError || taskStatus}</pre>
+              </CardContent>
             </Card>
           </section>
         </TabsContent>
@@ -895,7 +1408,7 @@ function WelcomeScreen({
       <section className="welcome-sidebar" aria-label="Project start">
         <div>
           <p className="eyebrow">Slideforge</p>
-          <h1>Start a teaching deck project</h1>
+          <h1>Start a deck project</h1>
           <p className="welcome-copy">
             Create a project folder for brief.md, outline.md, deck.yaml, assets and output.
           </p>
@@ -1005,7 +1518,7 @@ function ActiveSlidePreviewApp() {
         <SlidePreviewStage slide={slide} />
       ) : (
         <section className="active-preview-empty">
-          <h1>Active Preview</h1>
+          <h1>Slide Preview</h1>
           <p>Select a slide in the main window.</p>
         </section>
       )}
@@ -1033,50 +1546,91 @@ function TaskMetric({
   );
 }
 
-function SlidePreview({ assets, slide }: { assets: DeckAsset[]; slide: DeckSlide }) {
-  const visualAsset = assets.find((asset) => asset.id === slide.visual?.assetId);
+function SlidePreview({
+  assets,
+  projectPath,
+  slide,
+}: {
+  assets: DeckAsset[];
+  projectPath?: string;
+  slide: DeckSlide;
+}) {
+  const imagePath = typeof slideProps(slide).image === "string" ? String(slideProps(slide).image) : "";
+  const visualAsset =
+    assets.find((asset) => asset.path === imagePath) ??
+    assets.find((asset) => asset.id === slide.visual?.assetId);
   return (
     <section className="slide-preview">
-      <span>{slide.type}</span>
+      <span>{slideLayoutId(slide)}</span>
       <h3>{slide.title}</h3>
-      {visualAsset ? (
-        <p className="preview-visual">
-          Visual: {visualAsset.path}
-          {slide.visual?.alt ? ` (${slide.visual.alt})` : ""}
-        </p>
-      ) : null}
+      {visualAsset ? <VisualPreview asset={visualAsset} projectPath={projectPath} slide={slide} /> : null}
       <PreviewBody slide={slide} />
     </section>
   );
 }
 
+function VisualPreview({
+  asset,
+  projectPath,
+  slide,
+}: {
+  asset: DeckAsset;
+  projectPath?: string;
+  slide: DeckSlide;
+}) {
+  if (asset.kind === "image" && projectPath) {
+    return (
+      <figure className="preview-visual">
+        <img src={assetFileUrl(projectPath, asset.path)} alt={slide.visual?.alt || asset.path} />
+        <figcaption>
+          {asset.path}
+          {slide.visual?.alt ? ` (${slide.visual.alt})` : ""}
+        </figcaption>
+      </figure>
+    );
+  }
+
+  return (
+    <p className="preview-visual">
+      Visual: {asset.path}
+      {slide.visual?.alt ? ` (${slide.visual.alt})` : ""}
+    </p>
+  );
+}
+
 function PreviewBody({ slide }: { slide: DeckSlide }) {
-  if (slide.type === "metric_grid") {
+  const props = slideProps(slide);
+  const layout = slideLayoutId(slide);
+  if (layout === "progress-dashboard" || layout === "lab-progress") {
     return (
       <div className="preview-metrics">
-        {arrayValue(slide.content, "metrics").map((metric, index) => (
+        {[...arrayValue(props, "done"), ...arrayValue(props, "doing")].slice(0, 3).map((metric, index) => (
           <div key={index}>
             <small>{objectString(metric, "label")}</small>
-            <strong>{objectString(metric, "value")}</strong>
+            <strong>{objectString(metric, "value")}%</strong>
           </div>
         ))}
       </div>
     );
   }
 
-  if (slide.type === "trace_table") {
-    return <p>{arrayValue(slide.content, "rows").length} trace rows</p>;
+  if (layout === "system-flow" || layout === "research-system-concept") {
+    return <p>{arrayValue(props, "steps").length} flow steps</p>;
   }
 
-  if (slide.type === "code_explain") {
-    return <pre>{stringValue(slide.content, "code").slice(0, 240)}</pre>;
+  if (layout === "code-walkthrough") {
+    return <pre>{stringValue(props, "code").slice(0, 240)}</pre>;
   }
 
-  if (slide.type === "checklist") {
-    return <p>{arrayValue(slide.content, "items").length} checklist items</p>;
+  if (layout === "exercise-checklist") {
+    return <p>{arrayValue(props, "items").length} checklist items</p>;
   }
 
-  return <p>{firstContentText(slide.content) || "No content fields."}</p>;
+  if (layout === "two-column") {
+    return <p>{arrayValue(props, "columns").length} columns</p>;
+  }
+
+  return <p>{firstContentText(props) || "No props fields."}</p>;
 }
 
 function validateDeck(deck: DeckSpec): string[] {
@@ -1084,10 +1638,14 @@ function validateDeck(deck: DeckSpec): string[] {
   if (!deck.meta.title.trim()) {
     issues.push("Deck title is required.");
   }
-  if (deck.meta.template && deck.meta.template !== "teaching") {
-    issues.push("Only the teaching template is supported in this MVP.");
+  if (deck.meta.template && !templatePresets.some((preset) => preset.id === deck.meta.template)) {
+    issues.push("Template must be teaching or clean.");
+  }
+  if (!themeOptions.some((theme) => theme.id === deck.meta.theme)) {
+    issues.push("Theme should be lecture-light or clean-light.");
   }
   const assetIds = new Set((deck.assets ?? []).map((asset) => asset.id));
+  const assetPaths = new Set((deck.assets ?? []).map((asset) => asset.path));
   deck.slides.forEach((slide, index) => {
     if (!slide.title.trim()) {
       issues.push(`Slide ${index + 1} needs a title.`);
@@ -1095,11 +1653,21 @@ function validateDeck(deck: DeckSpec): string[] {
     if (!slide.id.trim()) {
       issues.push(`Slide ${index + 1} needs an id.`);
     }
-    if (!slideTypes.includes(slide.type)) {
-      issues.push(`Slide ${index + 1} uses unsupported type "${slide.type}".`);
+    if (!slide.layout && !slide.type) {
+      issues.push(`Slide ${index + 1} needs a layout.`);
+    }
+    if (slide.layout && !layoutDefinitions.some((layout) => layout.id === slide.layout)) {
+      issues.push(`Slide ${index + 1} uses unsupported layout "${slide.layout}".`);
+    }
+    if (slide.type && !slideTypes.includes(slide.type)) {
+      issues.push(`Slide ${index + 1} uses unsupported legacy type "${slide.type}".`);
     }
     if (slide.visual && !assetIds.has(slide.visual.assetId)) {
       issues.push(`Slide ${index + 1} references a missing visual asset.`);
+    }
+    const image = slideProps(slide).image;
+    if (typeof image === "string" && image.startsWith("assets/") && !assetPaths.has(image)) {
+      issues.push(`Slide ${index + 1} references a missing image asset.`);
     }
   });
   return issues;
@@ -1111,17 +1679,17 @@ function createEmptyTaskDeck(task: TaskFolderPayload): DeckSpec {
     meta: {
       title: title || "Untitled teaching deck",
       language: "zh-CN",
-      theme: "teaching",
+      theme: "lecture-light",
       template: "teaching",
     },
     assets: task.assets,
     slides: [
       {
         id: "cover",
-        type: "cover",
+        layout: "title-cover",
         title: title || "Untitled teaching deck",
-        content: {
-          subtitle: "Click Generate to create the first draft from brief.md and outline.md.",
+        props: {
+          subtitle: "Edit deck.yaml directly or use Draft with AI from the Project tab.",
         },
       },
     ],
@@ -1134,9 +1702,169 @@ function normalizeTaskDeck(deck: DeckSpec, task: TaskFolderPayload): DeckSpec {
     meta: {
       ...deck.meta,
       template: deck.meta.template ?? "teaching",
+      theme:
+        deck.meta.theme === "teaching"
+          ? "lecture-light"
+          : deck.meta.theme || (deck.meta.template === "clean" ? "clean-light" : "lecture-light"),
     },
-    assets: deck.assets && deck.assets.length > 0 ? deck.assets : task.assets,
+    assets: mergeDeckAssets(deck.assets ?? [], task.assets),
+    slides: deck.slides.map(normalizeSlideForLayout),
   };
+}
+
+function mergeDeckAssets(deckAssets: DeckAsset[], scannedAssets: DeckAsset[]): DeckAsset[] {
+  const byPath = new Map<string, DeckAsset>();
+  for (const asset of deckAssets) {
+    byPath.set(asset.path, asset);
+  }
+  for (const asset of scannedAssets) {
+    const existing = byPath.get(asset.path);
+    byPath.set(asset.path, existing ? { ...asset, ...existing } : asset);
+  }
+  return [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function normalizeSlideForLayout(slide: DeckSlide): DeckSlide {
+  if (slide.layout && slide.props) {
+    return slide;
+  }
+  const layout = slide.layout ?? defaultLayoutForSlideType(slide.type);
+  return {
+    ...slide,
+    layout,
+    props: slide.props ?? legacySlideProps(slide),
+  };
+}
+
+function createDefaultSlide(layout: LayoutId, deck: DeckSpec): DeckSlide {
+  const definition = layoutDefinition(layout);
+  const title = definition.name;
+  const id = uniqueSlideId(layout, deck);
+  return {
+    id,
+    layout,
+    title,
+    props: structuredClone(definition.defaultProps),
+  };
+}
+
+function defaultLayoutForSlideType(type: SlideType | undefined): LayoutId {
+  switch (type) {
+    case "cover":
+      return "title-cover";
+    case "section":
+      return "section-divider";
+    case "comparison":
+    case "two_column":
+      return "two-column";
+    case "code_explain":
+      return "code-walkthrough";
+    case "checklist":
+      return "exercise-checklist";
+    case "process":
+    case "workflow":
+    case "trace_table":
+      return "system-flow";
+    case "note_callout":
+    case "closing":
+      return "quote-callout";
+    default:
+      return "bullet-list";
+  }
+}
+
+function legacySlideProps(slide: DeckSlide): Record<string, unknown> {
+  const content = slide.content ?? {};
+  switch (slide.type) {
+    case "cover":
+      return { subtitle: stringValue(content, "subtitle") };
+    case "section":
+      return { lead: stringValue(content, "lead") };
+    case "comparison":
+    case "two_column":
+      return { columns: arrayValue(content, "columns") };
+    case "code_explain":
+      return {
+        language: stringValue(content, "language") || "text",
+        code: stringValue(content, "code"),
+        note: stringValue(content, "note"),
+        points: arrayValue(content, "points"),
+      };
+    case "trace_table":
+      return {
+        steps: arrayValue(content, "rows").map((row) =>
+          Array.isArray(row) ? row.map((cell) => String(cell ?? "")).join(" / ") : String(row ?? ""),
+        ),
+        sideTitle: "Columns",
+        sideItems: arrayValue(content, "columns"),
+        note: stringValue(content, "note"),
+      };
+    case "process":
+      return { points: arrayValue(content, "steps") };
+    case "workflow":
+      return {
+        steps: arrayValue(content, "steps").map((step) =>
+          [objectString(step, "label"), objectString(step, "body")].filter(Boolean).join(": "),
+        ),
+      };
+    case "checklist":
+      return { items: arrayValue(content, "items") };
+    case "note_callout":
+      return { quote: stringValue(content, "body") };
+    case "closing":
+      return { quote: stringValue(content, "statement") };
+    case "metric_grid":
+      return {
+        points: arrayValue(content, "metrics").map((metric) =>
+          [objectString(metric, "label"), objectString(metric, "value"), objectString(metric, "note")]
+            .filter(Boolean)
+            .join(" - "),
+        ),
+      };
+    case "principle_card":
+      return {
+        points: arrayValue(content, "cards").map((card) =>
+          [objectString(card, "title"), objectString(card, "body")].filter(Boolean).join(": "),
+        ),
+      };
+    default:
+      return content;
+  }
+}
+
+function slideProps(slide: DeckSlide): Record<string, unknown> {
+  return slide.props ?? legacySlideProps(slide);
+}
+
+function slideLayoutId(slide: DeckSlide): LayoutId | string {
+  return slide.layout ?? defaultLayoutForSlideType(slide.type);
+}
+
+function layoutDefinition(layoutId: LayoutId | string): LayoutDefinition {
+  return (
+    layoutDefinitions.find((layout) => layout.id === layoutId) ??
+    layoutDefinitions.find((layout) => layout.id === "bullet-list")!
+  );
+}
+
+function layoutLabel(layoutId: LayoutId | string): string {
+  return layoutDefinition(layoutId).name;
+}
+
+function uniqueSlideId(base: string, deck: DeckSpec): string {
+  const existing = new Set(deck.slides.map((slide) => slide.id));
+  const normalized = base
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const root = normalized || "slide";
+  let candidate = root;
+  let index = 2;
+  while (existing.has(candidate)) {
+    candidate = `${root}-${index}`;
+    index += 1;
+  }
+  return candidate;
 }
 
 function deckToYaml(deck: DeckSpec): string {
@@ -1182,16 +1910,27 @@ function coerceDeckSpec(value: unknown): DeckSpec {
     if (typeof candidateSlide.id !== "string") {
       throw new Error(`slides[${index}].id must be a string.`);
     }
-    if (typeof candidateSlide.type !== "string") {
-      throw new Error(`slides[${index}].type must be a string.`);
-    }
     if (typeof candidateSlide.title !== "string") {
       throw new Error(`slides[${index}].title must be a string.`);
     }
+    const hasLayout = typeof candidateSlide.layout === "string";
+    const hasLegacyType = typeof candidateSlide.type === "string";
+    if (!hasLayout && !hasLegacyType) {
+      throw new Error(`slides[${index}] must include layout or legacy type.`);
+    }
     if (
-      !candidateSlide.content ||
-      typeof candidateSlide.content !== "object" ||
-      Array.isArray(candidateSlide.content)
+      hasLayout &&
+      (!candidateSlide.props ||
+        typeof candidateSlide.props !== "object" ||
+        Array.isArray(candidateSlide.props))
+    ) {
+      throw new Error(`slides[${index}].props must be an object.`);
+    }
+    if (
+      hasLegacyType &&
+      (!candidateSlide.content ||
+        typeof candidateSlide.content !== "object" ||
+        Array.isArray(candidateSlide.content))
     ) {
       throw new Error(`slides[${index}].content must be an object.`);
     }
@@ -1232,6 +1971,14 @@ function objectString(source: unknown, key: string): string {
   return typeof value === "string" ? value : "";
 }
 
+function assetFileUrl(projectPath: string, assetPath: string): string {
+  const absolutePath = `${projectPath.replace(/\/+$/g, "")}/${assetPath}`;
+  return `file://${absolutePath
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/")}`;
+}
+
 function firstContentText(content: Record<string, unknown>): string {
   for (const value of Object.values(content)) {
     if (typeof value === "string") {
@@ -1262,9 +2009,10 @@ async function emitActiveSlideToDesktopPreview(slide: DeckSlide): Promise<void> 
 }
 
 function SlidePreviewStage({ slide }: { slide: DeckSlide }) {
+  const layout = slideLayoutId(slide);
   return (
-    <section className={`active-slide-stage ${slide.type}`}>
-      <p className="active-slide-type">{slide.type}</p>
+    <section className={`active-slide-stage ${layout}`}>
+      <p className="active-slide-type">{layout}</p>
       <h1>{slide.title}</h1>
       <ActivePreviewBody slide={slide} />
     </section>
@@ -1272,79 +2020,67 @@ function SlidePreviewStage({ slide }: { slide: DeckSlide }) {
 }
 
 function ActivePreviewBody({ slide }: { slide: DeckSlide }) {
-  if (slide.type === "metric_grid") {
+  const layout = slideLayoutId(slide);
+  const props = slideProps(slide);
+  if (layout === "progress-dashboard" || layout === "lab-progress") {
     return (
       <div className="active-metric-grid">
-        {arrayValue(slide.content, "metrics").map((metric, index) => (
+        {[...arrayValue(props, "done"), ...arrayValue(props, "doing")].slice(0, 6).map((metric, index) => (
           <article key={index}>
             <span>{objectString(metric, "label")}</span>
-            <strong>{objectString(metric, "value")}</strong>
-            <small>{objectString(metric, "note")}</small>
+            <strong>{objectString(metric, "value")}%</strong>
           </article>
         ))}
       </div>
     );
   }
 
-  if (slide.type === "principle_card") {
+  if (layout === "quote-callout") {
     return (
-      <div className="active-card-stack">
-        {arrayValue(slide.content, "cards").map((card, index) => (
-          <article key={index}>
-            <h2>{objectString(card, "title")}</h2>
-            <p>{objectString(card, "body")}</p>
-          </article>
-        ))}
-      </div>
+      <p className="active-note">
+        {stringValue(props, "quote") || stringValue(props, "statement") || stringValue(props, "body")}
+      </p>
     );
   }
 
-  if (slide.type === "code_explain") {
+  if (layout === "code-walkthrough") {
     return (
       <>
         <pre>
-          <code>{stringValue(slide.content, "code")}</code>
+          <code>{stringValue(props, "code")}</code>
         </pre>
-        {stringValue(slide.content, "note") ? (
-          <p className="active-note">{stringValue(slide.content, "note")}</p>
+        {stringValue(props, "note") ? (
+          <p className="active-note">{stringValue(props, "note")}</p>
         ) : null}
       </>
     );
   }
 
-  if (slide.type === "trace_table") {
-    return <ActiveTraceTable slide={slide} />;
-  }
-
-  if (slide.type === "workflow") {
+  if (layout === "system-flow" || layout === "research-system-concept") {
     return (
       <div className="active-workflow-list">
-        {arrayValue(slide.content, "steps").map((step, index) => (
+        {arrayValue(props, "steps").map((step, index) => (
           <article key={index}>
-            <strong>{objectString(step, "label")}</strong>
-            <span>{objectString(step, "body")}</span>
+            <strong>{String(index + 1).padStart(2, "0")}</strong>
+            <span>{String(step)}</span>
           </article>
         ))}
       </div>
     );
   }
 
-  if (slide.type === "checklist") {
-    return <ActiveList items={arrayValue(slide.content, "items")} />;
+  if (layout === "exercise-checklist") {
+    return <ActiveList items={arrayValue(props, "items")} />;
   }
 
-  if (slide.type === "bullet_summary") {
-    return <ActiveList items={arrayValue(slide.content, "points")} />;
+  if (layout === "bullet-list") {
+    return <ActiveList items={arrayValue(props, "points").length ? arrayValue(props, "points") : arrayValue(props, "items")} />;
   }
 
-  if (slide.type === "process") {
-    return <ActiveList items={arrayValue(slide.content, "steps")} />;
-  }
-
-  if (slide.type === "two_column" || slide.type === "comparison") {
+  if (layout === "two-column") {
     return (
       <div className="active-columns">
-        {arrayValue(slide.content, "columns").map((column, index) => (
+        {arrayValue(props, "columns").map((column, index) => (
           <article key={index}>
             <h2>{objectString(column, "title")}</h2>
             <ActiveList items={arrayValue(column as Record<string, unknown>, "items")} />
@@ -1354,46 +2090,11 @@ function ActivePreviewBody({ slide }: { slide: DeckSlide }) {
     );
   }
 
-  if (slide.type === "note_callout") {
-    return <p className="active-note">{stringValue(slide.content, "body")}</p>;
-  }
-
-  if (slide.type === "cover") {
-    return <p className="active-cover-subtitle">{stringValue(slide.content, "subtitle")}</p>;
-  }
-
-  if (slide.type === "closing") {
-    return <p className="active-cover-subtitle">{stringValue(slide.content, "statement")}</p>;
+  if (layout === "title-cover" || layout === "section-divider") {
+    return <p className="active-cover-subtitle">{stringValue(props, "subtitle") || stringValue(props, "lead")}</p>;
   }
 
   return null;
-}
-
-function ActiveTraceTable({ slide }: { slide: DeckSlide }) {
-  const columns = arrayValue(slide.content, "columns");
-  const rows = arrayValue(slide.content, "rows");
-  return (
-    <table className="active-trace-table">
-      <thead>
-        <tr>
-          {columns.map((column, index) => (
-            <th key={index}>{String(column)}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row, rowIndex) =>
-          Array.isArray(row) ? (
-            <tr key={rowIndex}>
-              {row.map((cell, cellIndex) => (
-                <td key={cellIndex}>{String(cell ?? "")}</td>
-              ))}
-            </tr>
-          ) : null,
-        )}
-      </tbody>
-    </table>
-  );
 }
 
 function ActiveList({ items }: { items: unknown[] }) {
@@ -1407,6 +2108,7 @@ function ActiveList({ items }: { items: unknown[] }) {
 }
 
 function renderPreviewDocument(slide: DeckSlide): string {
+  const layout = slideLayoutId(slide);
   return [
     "<!doctype html>",
     '<html lang="zh-CN">',
@@ -1420,8 +2122,8 @@ function renderPreviewDocument(slide: DeckSlide): string {
     "</head>",
     "<body>",
     '<main class="preview-stage">',
-    `<section class="slide ${slide.type}">`,
-    `<p class="slide-type">${escapeHtml(slide.type)}</p>`,
+    `<section class="slide ${escapeHtml(layout)}">`,
+    `<p class="slide-type">${escapeHtml(layout)}</p>`,
     `<h1>${escapeHtml(slide.title)}</h1>`,
     renderPreviewWindowBody(slide),
     "</section>",
@@ -1432,76 +2134,56 @@ function renderPreviewDocument(slide: DeckSlide): string {
 }
 
 function renderPreviewWindowBody(slide: DeckSlide): string {
-  switch (slide.type) {
-    case "cover":
-      return `<p class="cover-subtitle">${escapeHtml(stringValue(slide.content, "subtitle"))}</p>`;
-    case "closing":
-      return `<p class="cover-subtitle">${escapeHtml(stringValue(slide.content, "statement"))}</p>`;
-    case "metric_grid":
-      return [
-        '<div class="metric-grid">',
-        ...arrayValue(slide.content, "metrics").map(
-          (metric) =>
-            `<article><span>${escapeHtml(objectString(metric, "label"))}</span><strong>${escapeHtml(objectString(metric, "value"))}</strong><small>${escapeHtml(objectString(metric, "note"))}</small></article>`,
-        ),
-        "</div>",
-      ].join("\n");
-    case "principle_card":
-      return [
-        '<div class="card-stack">',
-        ...arrayValue(slide.content, "cards").map(
-          (card) =>
-            `<article><h2>${escapeHtml(objectString(card, "title"))}</h2><p>${escapeHtml(objectString(card, "body"))}</p></article>`,
-        ),
-        "</div>",
-      ].join("\n");
-    case "code_explain":
-      return [
-        `<pre><code>${escapeHtml(stringValue(slide.content, "code"))}</code></pre>`,
-        stringValue(slide.content, "note")
-          ? `<p class="note">${escapeHtml(stringValue(slide.content, "note"))}</p>`
-          : "",
-      ].join("\n");
-    case "trace_table":
-      return renderPreviewTable(slide);
-    case "workflow":
-      return [
-        '<div class="workflow-list">',
-        ...arrayValue(slide.content, "steps").map(
-          (step) =>
-            `<article><strong>${escapeHtml(objectString(step, "label"))}</strong><span>${escapeHtml(objectString(step, "body"))}</span></article>`,
-        ),
-        "</div>",
-      ].join("\n");
-    case "checklist":
-      return [
-        '<ul class="checklist">',
-        ...arrayValue(slide.content, "items").map(
-          (item) => `<li>${escapeHtml(String(item))}</li>`,
-        ),
-        "</ul>",
-      ].join("\n");
-    case "two_column":
-    case "comparison":
-      return [
-        '<div class="columns">',
-        ...arrayValue(slide.content, "columns").map(
-          (column) =>
-            `<article><h2>${escapeHtml(objectString(column, "title"))}</h2><ul>${arrayValue(column as Record<string, unknown>, "items")
-              .map((item) => `<li>${escapeHtml(String(item))}</li>`)
-              .join("")}</ul></article>`,
-        ),
-        "</div>",
-      ].join("\n");
-    case "bullet_summary":
-      return renderPreviewList(slide.content, "points");
-    case "process":
-      return renderPreviewList(slide.content, "steps");
-    case "note_callout":
-      return `<p class="note">${escapeHtml(stringValue(slide.content, "body"))}</p>`;
-    case "section":
-      return "";
+  const layout = slideLayoutId(slide);
+  const props = slideProps(slide);
+  if (layout === "title-cover") {
+    return `<p class="cover-subtitle">${escapeHtml(stringValue(props, "subtitle"))}</p>`;
   }
+  if (layout === "quote-callout") {
+    return `<p class="note">${escapeHtml(stringValue(props, "quote") || stringValue(props, "statement") || stringValue(props, "body"))}</p>`;
+  }
+  if (layout === "progress-dashboard" || layout === "lab-progress") {
+    return [
+      '<div class="metric-grid">',
+      ...[...arrayValue(props, "done"), ...arrayValue(props, "doing")].slice(0, 6).map(
+        (metric) =>
+          `<article><span>${escapeHtml(objectString(metric, "label"))}</span><strong>${escapeHtml(objectString(metric, "value"))}%</strong></article>`,
+      ),
+      "</div>",
+    ].join("\n");
+  }
+  if (layout === "code-walkthrough") {
+    return [
+      `<pre><code>${escapeHtml(stringValue(props, "code"))}</code></pre>`,
+      stringValue(props, "note") ? `<p class="note">${escapeHtml(stringValue(props, "note"))}</p>` : "",
+    ].join("\n");
+  }
+  if (layout === "system-flow" || layout === "research-system-concept") {
+    return [
+      '<div class="workflow-list">',
+      ...arrayValue(props, "steps").map(
+        (step, index) =>
+          `<article><strong>${String(index + 1).padStart(2, "0")}</strong><span>${escapeHtml(String(step))}</span></article>`,
+      ),
+      "</div>",
+    ].join("\n");
+  }
+  if (layout === "exercise-checklist") {
+    return renderPreviewList(props, "items");
+  }
+  if (layout === "two-column") {
+    return [
+      '<div class="columns">',
+      ...arrayValue(props, "columns").map(
+        (column) =>
+          `<article><h2>${escapeHtml(objectString(column, "title"))}</h2><ul>${arrayValue(column as Record<string, unknown>, "items")
+            .map((item) => `<li>${escapeHtml(String(item))}</li>`)
+            .join("")}</ul></article>`,
+      ),
+      "</div>",
+    ].join("\n");
+  }
+  return renderPreviewList(props, "points");
 }
 
 function renderPreviewList(content: Record<string, unknown>, key: string): string {
@@ -1509,25 +2191,6 @@ function renderPreviewList(content: Record<string, unknown>, key: string): strin
     '<ul class="checklist">',
     ...arrayValue(content, key).map((item) => `<li>${escapeHtml(String(item))}</li>`),
     "</ul>",
-  ].join("\n");
-}
-
-function renderPreviewTable(slide: DeckSlide): string {
-  const columns = arrayValue(slide.content, "columns");
-  const rows = arrayValue(slide.content, "rows");
-  return [
-    "<table>",
-    "<thead><tr>",
-    ...columns.map((column) => `<th>${escapeHtml(String(column))}</th>`),
-    "</tr></thead>",
-    "<tbody>",
-    ...rows.map((row) =>
-      Array.isArray(row)
-        ? `<tr>${row.map((cell) => `<td>${escapeHtml(String(cell ?? ""))}</td>`).join("")}</tr>`
-        : "",
-    ),
-    "</tbody>",
-    "</table>",
   ].join("\n");
 }
 

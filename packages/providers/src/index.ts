@@ -17,7 +17,7 @@ export interface ReferencedAssetContent {
 export interface PlanDeckInput {
   brief: string;
   outline: string;
-  template: "teaching";
+  template: "teaching" | "clean";
   assets: DeckAsset[];
   referencedAssetContents: ReferencedAssetContent[];
   language?: string;
