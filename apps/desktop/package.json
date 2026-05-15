@@ -11,9 +11,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@fontsource-variable/geist": "^5.2.8",
+    "@codemirror/commands": "^6.10.3",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/lint": "^6.9.6",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.43.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "codemirror": "^6.0.2",
     "js-yaml": "^4.1.0",
     "lucide-react": "^1.14.0",
     "radix-ui": "^1.4.3",
@@ -28,11 +33,11 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.5.0",
+    "electron": "^39.2.4",
     "postcss": "^8.5.13",
     "shadcn": "^4.6.0",
     "tailwindcss": "^4.2.4",
     "typescript": "^5.9.3",
-    "vite": "^7.2.4",
-    "electron": "^39.2.4"
+    "vite": "^7.2.4"
   }
 }

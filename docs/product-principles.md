@@ -12,7 +12,9 @@ Slideforge 不是“输入一句话然后随机生成 PPT”的工具，而是�
 
 ## 核心判断
 
-普通用户不应该写 Slidev Markdown，也不应该理解 `v-click`、layout slot、Vue 组件或导出细节。Slidev 是渲染后端，不是用户界面。
+普通用户不应该写 Slidev 语法，也不应该理解 `v-click`、layout slot、Vue 组件或导出细节。Slidev 是渲染后端，不是用户界面。
+
+M1 选择让用户写 `slides/*.md`，这里的 Markdown 是受 layout contract 约束的内容输入，不是直接暴露 Slidev Markdown。用户写的是“这一页要讲什么”，系统负责把它翻译成 renderer 需要的结构。
 
 用户应该表达：
 

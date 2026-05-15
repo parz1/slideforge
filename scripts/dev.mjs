@@ -10,10 +10,7 @@ const rendererPort = await findAvailablePort(
 const rendererUrl = `http://${rendererHost}:${rendererPort}`;
 
 const slidevPort = String(
-  await findAvailablePort(
-    Number(process.env.SLIDEFORGE_SLIDEV_PORT ?? 3030),
-    "localhost",
-  ),
+  await findAvailablePort(Number(process.env.SLIDEFORGE_SLIDEV_PORT ?? 3030), "localhost"),
 );
 
 const build = run("pnpm", ["build:trial"], "build");
@@ -46,15 +43,10 @@ build.on("exit", (code) => {
         return;
       }
       processes.push(
-        run(
-          "pnpm",
-          ["--filter", "@slideforge/desktop", "dev:electron"],
-          "electron",
-          {
-            SLIDEFORGE_RENDERER_URL: rendererUrl,
-            SLIDEFORGE_DESKTOP_DEV: "1",
-          },
-        ),
+        run("pnpm", ["--filter", "@slideforge/desktop", "dev:electron"], "electron", {
+          SLIDEFORGE_RENDERER_URL: rendererUrl,
+          SLIDEFORGE_DESKTOP_DEV: "1",
+        }),
       );
     })
     .catch((error) => {
@@ -62,13 +54,7 @@ build.on("exit", (code) => {
       shutdown(1);
     });
 
-  processes.push(
-    run(
-      "slidev",
-      [".slideforge/build/slides.md", "--port", slidevPort],
-      "slidev",
-    ),
-  );
+  processes.push(run("slidev", [".slideforge/build/slides.md", "--port", slidevPort], "slidev"));
 
   console.log("");
   console.log("Slideforge dev is starting:");

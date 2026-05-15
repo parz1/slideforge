@@ -156,10 +156,7 @@
         },
         "animation": { "$ref": "#/$defs/animation" }
       },
-      "anyOf": [
-        { "required": ["layout", "props"] },
-        { "required": ["type", "content"] }
-      ]
+      "anyOf": [{ "required": ["layout", "props"] }, { "required": ["type", "content"] }]
     }
   }
 }

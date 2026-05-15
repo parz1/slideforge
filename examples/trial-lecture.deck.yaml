@@ -113,9 +113,23 @@ slides:
         - "vd"
         - "forest"
       rows:
-        - ["1", "n = A", "A not in vd, call DFS", "{A,B,C,D,E,F}", "{A,B,C,D,E,F}", "[{A,B,C,D,E,F}]"]
+        - [
+            "1",
+            "n = A",
+            "A not in vd, call DFS",
+            "{A,B,C,D,E,F}",
+            "{A,B,C,D,E,F}",
+            "[{A,B,C,D,E,F}]",
+          ]
         - ["2", "n = B ... F", "already in vd, skip", "-", "{A,B,C,D,E,F}", "unchanged"]
-        - ["3", "n = G", "G not in vd, call DFS", "{G,H}", "{A,B,C,D,E,F,G,H}", "[{A,B,C,D,E,F}, {G,H}]"]
+        - [
+            "3",
+            "n = G",
+            "G not in vd, call DFS",
+            "{G,H}",
+            "{A,B,C,D,E,F,G,H}",
+            "[{A,B,C,D,E,F}, {G,H}]",
+          ]
         - ["4", "n = H", "already in vd, skip", "-", "{A,B,C,D,E,F,G,H}", "unchanged"]
       note: "forest 保存的是每次 DFS 返回的 visited 集合，也就是连通分量。"
     speakerNotes: "重点：外层 for 不是每个顶点都调用 DFS；已经在 vd 里的点会跳过。"

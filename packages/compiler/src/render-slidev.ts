@@ -1,9 +1,5 @@
 import yaml from "js-yaml";
-import {
-  builtinLayouts,
-  defaultLayoutForSlideType,
-  getLayoutDefinition,
-} from "./layouts";
+import { builtinLayouts, defaultLayoutForSlideType, getLayoutDefinition } from "./layouts";
 import type {
   DeckAsset,
   DeckSlide,
@@ -79,7 +75,10 @@ function normalizeSlide(slide: DeckSlide, assetsById: Map<string, DeckAsset>): D
   };
 }
 
-function legacyProps(slide: DeckSlide, assetsById: Map<string, DeckAsset>): Record<string, unknown> {
+function legacyProps(
+  slide: DeckSlide,
+  assetsById: Map<string, DeckAsset>,
+): Record<string, unknown> {
   const content = slide.content ?? {};
   switch (slide.type) {
     case "cover":
@@ -118,7 +117,9 @@ function legacyProps(slide: DeckSlide, assetsById: Map<string, DeckAsset>): Reco
     case "trace_table":
       return {
         steps: arrayField(content, "rows").map((row) =>
-          Array.isArray(row) ? row.map((cell) => String(cell ?? "")).join(" / ") : String(row ?? ""),
+          Array.isArray(row)
+            ? row.map((cell) => String(cell ?? "")).join(" / ")
+            : String(row ?? ""),
         ),
         sideTitle: "Columns",
         sideItems: arrayField(content, "columns"),
@@ -162,7 +163,7 @@ function legacyProps(slide: DeckSlide, assetsById: Map<string, DeckAsset>): Reco
 
 function visualAssetPath(slide: DeckSlide, assetsById: Map<string, DeckAsset>): string {
   const assetId = slide.visual?.assetId;
-  return assetId ? assetsById.get(assetId)?.path ?? "" : "";
+  return assetId ? (assetsById.get(assetId)?.path ?? "") : "";
 }
 
 function usedLayoutDefinitions(slides: DeckSlide[]): LayoutDefinition[] {

@@ -1,31 +1,73 @@
-# 授课任务工作流
+# Teaching Workflow
 
-第一版授课工作流围绕本地任务文件夹展开：
+授课场景仍然是 Slideforge 的第一目标用户场景，但 M1 已经从旧的 `brief.md / outline.md / deck.yaml` 改成 Markdown slide project。
 
-```txt
-task-folder/
-  brief.md
-  outline.md
-  deck.yaml
+## Project Layout
+
+```text
+course-project/
+  project.yaml
+  slides/
+    001-cover.md
+    002-goals.md
+    003-code.md
   assets/
   output/
 ```
 
-用户维护 `brief.md` 和 `outline.md`，素材放进 `assets/`。AI 只读取 `brief.md` 和 `outline.md` 中显式 `@assets/...` 引用到的文本素材；图片素材只作为可放入模板 slot 的引用。
+`project.yaml` 放项目级配置：
 
-`deck.yaml` 是核心产物。OpenAI 生成 Deck Spec 后先进入桌面端内存状态，用户确认后再保存为 `deck.yaml`。构建时会输出 Slidev 项目到 `output/slidev`，并尝试导出 `output/slides.pdf`。
-
-`.env.local` 或 `.env` 放在仓库根目录；如果两个文件都存在，`.env.local` 优先：
-
-```txt
-OPENAI_API_KEY=...
-OPENAI_MODEL=...
+```yaml
+title: Graph DFS and Postfix Notation
+language: zh-CN
+template: teaching
+theme: lecture-light
 ```
 
-API key 不会写入任务文件夹。
+每页 slide 是一个可读写的 Markdown 文件：
 
-桌面端提供一个本地 Vault 来管理项目：
+```md
+---
+id: goals
+layout: bullet-list
+title: 课程目标
+---
 
-- `Create Project`：输入项目名，选择父文件夹，自动创建标准任务目录。
-- `Open Project`：打开已有任务目录，并自动加入 Vault。
-- Vault 列表保存在应用数据目录，不写入项目目录。
+- 了解 DFS 的递归过程
+- 能手动追踪 visited 状态
+- 理解后缀表达式的计算顺序
+```
+
+## User Flow
+
+1. 在 launcher 创建或打开授课 project。
+2. 在 Project tab 设置 template/theme，导入图片、代码、文本素材。
+3. 在 Slides tab 选择 active slide，选择 layout，编辑 Markdown。
+4. 右侧查看 active slide preview、layout guide、spec/checks。
+5. 在 Export tab 启动完整 Slidev preview 或导出 PDF。
+
+## Asset References
+
+素材放在 `assets/` 下。slide Markdown 可以用显式引用：
+
+```md
+@assets/dfs-trace.png
+
+- 观察递归栈变化
+- 标出 visited 更新位置
+```
+
+M1 只处理图片和文本/code 文件。PDF、Word、Excel 抽取留到后续。
+
+## AI Boundary
+
+M1 弱化 AI。AI 不再是完成 deck 的主链路。
+
+M2/M3 之后，AI 应该围绕 layout contract 工作：
+
+- 生成或改写每页 Markdown
+- 根据 layout guide 填内容
+- 不直接生成最终 Slidev Markdown
+- 不绕过 project files 和 renderer
+
+API key 只从 `.env.local`、`.env` 或 process env 读取，不写入 project 文件夹。

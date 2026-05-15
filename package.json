@@ -2,9 +2,8 @@
   "name": "slideforge",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "description": "Template-controlled deck compiler for branded Slidev/PPT pipelines.",
-  "packageManager": "pnpm@10.3.0",
+  "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "start": "pnpm dev",
@@ -15,6 +14,13 @@
     "dev:slidev": "pnpm build:deck && slidev .slideforge/build/slides.md",
     "dev:trial": "pnpm build:trial && slidev .slideforge/build/slides.md",
     "dev:desktop": "pnpm --filter @slideforge/desktop dev:electron",
+    "smoke:m1": "node scripts/smoke-project-store.mjs",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint . --fix",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm smoke:m1",
+    "verify": "pnpm check && pnpm --filter @slideforge/desktop build",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "clean": "rm -rf dist packages/*/dist apps/*/dist .slideforge/build/*"
@@ -27,9 +33,13 @@
     "@slidev/cli": "^52.15.0",
     "@slidev/theme-seriph": "^0.25.0",
     "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22",
+    "oxfmt": "^0.49.0",
+    "oxlint": "^1.64.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   },
+  "packageManager": "pnpm@10.3.0",
   "pnpm": {
     "onlyBuiltDependencies": [
       "electron"
