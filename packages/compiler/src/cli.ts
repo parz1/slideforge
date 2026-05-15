@@ -50,11 +50,13 @@ async function main() {
 }
 
 function printUsageAndExit(): never {
-  console.error([
-    "Usage:",
-    "  tsx packages/compiler/src/cli.ts validate <deck.yaml> --schema <schema.json>",
-    "  tsx packages/compiler/src/cli.ts build <deck.yaml> --out <out-dir>",
-  ].join("\n"));
+  console.error(
+    [
+      "Usage:",
+      "  tsx packages/compiler/src/cli.ts validate <deck.yaml> --schema <schema.json>",
+      "  tsx packages/compiler/src/cli.ts build <deck.yaml> --out <out-dir>",
+    ].join("\n"),
+  );
   process.exit(1);
 }
 

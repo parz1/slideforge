@@ -1,52 +1,97 @@
 # Roadmap
 
-## Phase 0: 项目骨架
+Slideforge 当前进入 M2。M1 的目标是把本地桌面闭环跑通；M2 开始处理这个产品真正会长期变复杂的地方：layout / template / theme 的治理。
+
+## M1: Local Project MVP
+
+Status: feature complete, hardening.
+
+用户可以创建或打开本地 project，用 Markdown 写每页内容，选择 layout，预览并导出。
+
+```text
+project/
+  project.yaml
+  slides/
+    001-cover.md
+    002-goals.md
+  assets/
+  output/
+```
+
+已完成：
 
 - Electron + React 桌面壳
-- pnpm workspace
-- Deck Spec schema
-- 示例 deck
-- Slidev renderer 最小实现
-- 中文文档
+- intro launcher：Create Project / Open Project / recent vault
+- Markdown-first slide 文件：frontmatter 控制 `id/layout/title`
+- `project.yaml` 控制项目级 `title/language/template/theme`
+- slide add / duplicate / delete
+- asset import、引用扫描、缺失引用提示
+- 当前页 Slidev live preview
+- 完整 deck preview 和 PDF export
+- main process 拆分为 project、asset、vault、AI、Slidev services
 
-## Phase 1: 可跑 MVP
+M1 收尾标准：
 
-- 支持 source copy / brief 输入
-- 生成或编辑 Storyboard
-- 从 Storyboard 生成 Deck Spec
-- 实现模板约束校验
-- 在桌面端编辑大纲和当页结构化内容
-- 构建后启动 Slidev 预览
-- 显示校验错误和构建日志
+- `pnpm smoke:m1`
+- `pnpm --filter @slideforge/desktop typecheck`
+- `pnpm --filter @slideforge/desktop build`
+- 手动验收 create/open/save/preview/export
 
-## Phase 2: LLM Planner
+## M2: Layout And Template System
 
-- OpenAI provider
-- 从原始文案生成 Storyboard
-- 从 Storyboard 生成 Deck Spec
-- 根据 validator 错误修复结构化输出
-- prompt 版本管理
-- 生成理由和审查状态
+Status: next.
 
-## Phase 3: 模板系统
+目标是把 Slideforge 从“能写 slide 的 app”推进成“可维护的 layout/template 库”。用户不该理解 Slidev 语法，但必须知道每种 layout 怎么写内容、能放什么素材、会生成什么视觉结构。
 
-- 增加品牌主题 token
-- 增加更多 slide 类型
-- 引入布局溢出检测
-- 支持 speaker notes
-- 支持素材引用和图片占位
+重点：
 
-## Phase 4: 输出扩展
+- 建立 layout registry 的单一事实源
+- 每个 layout 定义：
+  - id、name、category、description
+  - markdown contract
+  - props schema / default props
+  - example body
+  - allowed asset roles
+  - renderer implementation
+- renderer、desktop guide、AI prompt、project parser 都从同一套 registry 派生
+- teaching / clean 两套 template 只是 layout 集合和主题默认值，不再各自复制约束
+- 增加 layout 级 smoke examples，防止某个 layout 能解析但不能渲染
 
-- Slidev PDF/PPTX 导出封装
-- 独立 PPTX renderer 调研
-- 可编辑 PPTX 输出
-- 批量构建
+M2 第一批工程任务：
 
-## Phase 5: 团队化
+1. 把 `packages/templates` 升级为 layout/template registry。
+2. 让 compiler 的 `builtinLayouts` 和 desktop 的 layout guide 共用 registry 元数据。
+3. 让 Electron project parser 使用 registry 中的 markdown contract。
+4. 增加 `pnpm smoke:layouts`，逐个 layout 生成一页 deck 并编译到 Slidev。
 
-- 模板包发布
-- 品牌主题管理
-- 审查流程
-- 内容版本对比
-- 构建缓存和远程渲染
+## M3: AI Drafting
+
+AI 先作为草稿助手，不作为主链路。
+
+目标：
+
+- 从现有 slides、project config、assets 生成补全草稿
+- 生成或修复每页 Markdown，而不是直接生成最终 Slidev
+- 使用 layout registry 约束 prompt
+- 显示生成理由和可审查 diff
+- 支持单页 rewrite / expand / shorten
+
+## M4: Output Hardening
+
+目标：
+
+- PDF export 稳定化
+- Slidev preview 进程管理更可靠
+- 构建日志结构化
+- 输出目录清理和缓存策略
+- 调研可编辑 PPTX renderer，但不阻塞 M1/M2
+
+## M5: Template Authoring
+
+目标：
+
+- 内置更多 layout
+- theme token 管理
+- AI 生成 layout / Vue component 草稿
+- layout lint 和截图验收
+- template library / vault

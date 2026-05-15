@@ -4,28 +4,53 @@
 
 ## 当前状态
 
-Slideforge 目前是一个 pnpm workspace 骨架，核心链路已经可跑通：
+Slideforge 的 M1 本地项目闭环已经 feature complete。当前桌面端是 Electron + React，主工作流是：
 
 ```text
-examples/basic.deck.yaml
-  -> schemas/deck.schema.json 校验
-  -> packages/compiler 渲染
-  -> .slideforge/build/slides.md + style.css
-  -> Slidev 预览
+Create/Open Project
+  -> edit project.yaml
+  -> edit slides/*.md
+  -> import assets/
+  -> compile internal Deck Spec
+  -> Slidev preview / PDF export
 ```
 
-桌面端位于 `apps/desktop`，现在是 Electron + React 的壳，主要用于承载后续的 Deck Spec 编辑、校验、构建和预览工作流。
+M1 project 结构：
 
-当前桌面端已经有一个授课工作流 MVP：支持打开本地任务文件夹、读取 `brief.md` / `outline.md` / `assets/` / `deck.yaml`、调用 OpenAI 生成 Deck Spec、结构化编辑当前页、保存 `deck.yaml`、构建 Slidev 输出并尝试导出 PDF。
+```text
+project/
+  project.yaml
+  slides/
+    001-cover.md
+    002-goals.md
+  assets/
+  output/
+```
 
-授课任务 MVP 的本地文件夹工作流见 `docs/teaching-workflow.md`。可用 `examples/tasks/trial-lecture-task` 作为打开任务文件夹的试用样例。
+每页 slide 是一个 Markdown 文件，frontmatter 控制结构：
+
+```md
+---
+id: goals
+layout: bullet-list
+title: 课程目标
+---
+
+- 了解课程基本内容与目标
+- 掌握核心知识点
+- 通过课堂练习巩固理解
+```
+
+`Deck Spec` 仍然存在，但它是内部中间模型，不再是普通用户主要编辑的文件。
 
 ## 目录边界
 
-- `packages/compiler`: Deck Spec 类型、校验、CLI、Slidev renderer。
-- `packages/templates`: 内置模板定义和模板约束，后续应成为 renderer 的主要约束来源。
-- `packages/providers`: LLM provider 抽象，目前只有占位接口。
 - `apps/desktop`: Electron + React 桌面应用。
+- `apps/desktop/electron/domain`: Electron main 可复用的领域常量和校验。
+- `apps/desktop/electron/services`: project、asset、vault、AI、Slidev 等主进程服务。
+- `packages/compiler`: Deck Spec 类型、校验、CLI、Slidev renderer。
+- `packages/templates`: M2 将升级为 layout/template registry。
+- `packages/providers`: LLM provider 抽象，目前只有占位接口。
 - `schemas`: Deck Spec JSON Schema。
 - `examples`: 可用于验证编译链路的示例 deck。
 - `docs`: 产品、架构和实现策略文档。
@@ -35,45 +60,46 @@ examples/basic.deck.yaml
 ```bash
 pnpm install
 pnpm dev
+pnpm smoke:m1
+pnpm check
+pnpm verify
+pnpm --filter @slideforge/desktop typecheck
+pnpm --filter @slideforge/desktop build
 pnpm validate
 pnpm build:deck
-pnpm dev:slidev
-pnpm dev:desktop
-pnpm typecheck
 pnpm clean
 ```
 
 `pnpm dev` 会先构建 `examples/trial-lecture.deck.yaml`，再同时启动：
 
-- Desktop app: Electron 原生窗口。React renderer 固定使用 `http://127.0.0.1:1420/`。
-- Slidev preview: 默认从 `http://localhost:3030/` 开始找可用端口。
+- Desktop app: Electron 原生窗口。React renderer 使用自动选择的 `127.0.0.1` 端口。
+- Sidecar Slidev preview: 用于示例 deck，默认从 `http://localhost:3030/` 开始找可用端口。
 
-如果 Slidev 端口被占用，脚本会自动选择下一个可用端口并在终端打印实际地址。也可以用环境变量指定起始端口：
+桌面端内的 active slide preview / deck preview 会由 Electron service 另外启动对应 project 的 Slidev preview。
 
-```bash
-SLIDEFORGE_SLIDEV_PORT=3040 pnpm dev
-```
+## M1 验收
 
-## 整理规则
-
-生成物不作为源码维护：
-
-- `dist/`
-- `apps/*/dist/`
-- `apps/desktop/dist/`
-- `.slideforge/build/*`，但保留 `.slideforge/build/.gitkeep`
-
-如果需要重新生成示例输出，运行：
+自动验收：
 
 ```bash
-pnpm build:deck
+pnpm smoke:m1
+pnpm check
+pnpm --filter @slideforge/desktop typecheck
+pnpm --filter @slideforge/desktop build
 ```
 
-## 建议下一步
+手动验收：
 
-1. 让 `packages/templates` 成为模板约束的单一来源，避免 schema、类型和 renderer 各自维护 slide type 规则。
-2. 把 `examples/trial-lecture.deck.yaml` 作为真实复杂样例继续压测 schema 和 renderer。
-3. 给 compiler 增加最小测试集，覆盖校验失败、HTML 转义、step reveal 和输出文件写入。
-4. 让桌面端接入本地示例文件的 validate/build/preview，而不是急着接 LLM provider。
+1. Create Project 生成 `project.yaml / slides / assets / output`。
+2. Open Project 能读取新格式并写入 recent vault。
+3. 修改 slide Markdown 后 slide list、preview、spec 同步。
+4. Add / Duplicate / Delete slide 能真实修改 `slides/*.md`。
+5. Import Assets 后素材出现在 `assets/`，缺失引用会提示。
+6. Open Slide Preview 显示当前 active slide。
+7. Preview Deck 和 Export PDF 能从项目文件重新编译。
 
-如果需要更完整的项目边界和迁移顺序，见 `docs/project-outline.md`。
+## 下一步
+
+进入 M2：layout/template system。
+
+优先级最高的是让 layout registry 成为单一事实源。现在 renderer、desktop guide、Electron parser、AI prompt 仍有重复定义，M2 要把这些约束集中起来，否则后续新增 layout 会持续产生 schema drift。

@@ -9,10 +9,6 @@ export type {
   ThemeTokens,
   ValidationResult,
 } from "./types";
-export {
-  builtinLayouts,
-  defaultLayoutForSlideType,
-  getLayoutDefinition,
-} from "./layouts";
+export { builtinLayouts, defaultLayoutForSlideType, getLayoutDefinition } from "./layouts";
 export { renderSlidev } from "./render-slidev";
 export { validateDeckSpec } from "./validation";
